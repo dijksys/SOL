@@ -211,11 +211,6 @@
   --accion-primario-hover: #A93A35;
 }
 
-/* Scrollbar */
-[data-theme="dark"] ::-webkit-scrollbar-track { background: #131C29; }
-[data-theme="dark"] ::-webkit-scrollbar-thumb { background: #2E3D55; }
-[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #3A4C68; }
-
 /* Alertas: el borde claro hardcodeado no funciona sobre fondos oscuros */
 [data-theme="dark"] .alerta-error { border-color: rgba(240, 166, 162, 0.35); }
 [data-theme="dark"] .alerta-exito { border-color: rgba(168, 217, 140, 0.35); }
@@ -324,11 +319,23 @@ body {
 
 .cargando { padding: 4rem; text-align: center; color: var(--text-2); }
 
-/* ---------- Scrollbar (estándar del sistema) ---------- */
-::-webkit-scrollbar { width: 8px; height: 8px; }
-::-webkit-scrollbar-track { background: #f1f3f5; border-radius: 10px; }
-::-webkit-scrollbar-thumb { background: #d5dde6; border-radius: 10px; }
-::-webkit-scrollbar-thumb:hover { background: #c2ccd8; }
+/* ---------- Scrollbars: política global ----------
+   Se oculta únicamente la representación visual. El desplazamiento sigue
+   disponible con rueda, touchpad, gestos, teclado y scroll programático. */
+html,
+body,
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
 
 /* ---------- Cabecera (fallback genérico) ---------- */
 .cabecera {
@@ -2083,19 +2090,6 @@ input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
   overscroll-behavior: contain;
 }
 
-/* Ocultar únicamente la representación visual del scrollbar.
-   El desplazamiento de la navegación y del drawer debe seguir funcionando. */
-.sidebar,
-.sidebar .side-nav {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.sidebar::-webkit-scrollbar,
-.sidebar .side-nav::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
-}
 .side-group { margin-bottom: 18px; }
 /* La separación entre categorías se resuelve con el espacio y el título. */
 .side-group + .side-group { margin-top: 6px; }
@@ -2236,11 +2230,7 @@ input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
     justify-content: center;
   }
   .sidebar:not(:hover) .side-brand .side-brand-logo { height: 38px; }
-  .sidebar:not(:hover) .side-nav {
-    padding: 18px 12px;
-    /* La nav no se recorta para que el tooltip de foco pueda salir del carril. */
-    overflow: visible;
-  }
+  .sidebar:not(:hover) .side-nav { padding: 18px 12px; }
   .sidebar:not(:hover) .side-link {
     grid-template-columns: 18px;
     justify-content: center;
@@ -2266,34 +2256,6 @@ input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
     margin-inline: auto;
   }
   .sidebar:not(:hover) .logout span { display: none; }
-
-  /* Tooltip para navegación por teclado: el hover ya expande y muestra la
-     etiqueta, por lo que el tooltip solo se necesita cuando el foco llega sin
-     puntero sobre la sidebar. */
-  .sidebar:not(:hover) .side-link { position: relative; }
-  .sidebar:not(:hover) .side-link::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    left: calc(100% + 12px);
-    top: 50%;
-    transform: translateY(-50%);
-    background: var(--navy-2);
-    color: #fff;
-    padding: 5px 10px;
-    border-radius: var(--radius-sm);
-    font-size: 12px;
-    font-weight: 500;
-    white-space: nowrap;
-    opacity: 0;
-    visibility: hidden;
-    pointer-events: none;
-    transition: opacity 0.12s ease, visibility 0.12s ease;
-    z-index: 200;
-  }
-  .sidebar:not(:hover) .side-link:focus-visible::after {
-    opacity: 1;
-    visibility: visible;
-  }
 }
 
 /* ---------- Sidebar en móvil: panel superpuesto ---------- */

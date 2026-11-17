@@ -91,14 +91,12 @@
   flex-shrink: 0;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
   /* Grupo de navegación contenido (una sola unidad, no tarjetas sueltas). */
   padding: 4px;
   background: rgba(255, 255, 255, 0.07);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-lg);
 }
-.app-postulante .post-nav::-webkit-scrollbar { display: none; }
 .app-postulante .post-nav a {
   color: #C7D6E8;
   text-decoration: none;
@@ -235,18 +233,6 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-2xl);
 }
-
-/* ---------- Scroll funcional con barra visualmente oculta ----------
-   Se oculta solo la representación del scrollbar; overflow-y permanece. */
-.app-postulante .lista-ofertas,
-.app-postulante .panel-contenido,
-.app-postulante .panel-detalle {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-.app-postulante .lista-ofertas::-webkit-scrollbar,
-.app-postulante .panel-contenido::-webkit-scrollbar,
-.app-postulante .panel-detalle::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
 /* ---------- Pills de filtro ---------- */
 .app-postulante .filter-bar {

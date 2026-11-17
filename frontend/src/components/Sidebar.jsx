@@ -99,7 +99,6 @@ export default function Sidebar({ marca, grupos, usuario, indicadores = {} }) {
                     key={item.texto}
                     type="button"
                     className="side-link"
-                    data-tooltip={item.texto}
                     title={item.texto}
                     aria-label={item.texto}
                     onClick={() => { item.onClick(); setAbiertoMovil(false); }}
@@ -111,7 +110,6 @@ export default function Sidebar({ marca, grupos, usuario, indicadores = {} }) {
                   <NavLink
                     key={item.to}
                     to={item.to}
-                    data-tooltip={item.texto}
                     title={item.texto}
                     aria-label={item.texto}
                     onClick={() => setAbiertoMovil(false)}

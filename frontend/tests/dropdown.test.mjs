@@ -40,15 +40,14 @@ test('Selecto entrega el valor y conserva accesibilidad y opciones declarativas'
   assert.doesNotMatch(fuente, /target:\s*\{\s*value/);
 });
 
-test('los paneles ocultan la barra de scroll sin desactivar el desplazamiento', () => {
-  const css = leer('../src/components/Dropdown/Dropdown.css');
+test('los paneles conservan el desplazamiento y usan la política global de scrollbars', () => {
+  const panel = leer('../src/components/Dropdown/Dropdown.css');
+  const estilos = leer('../src/styles.css');
 
-  assert.match(css, /overflow-y:\s*auto/);
-  assert.match(css, /scrollbar-width:\s*none/);
-  assert.match(css, /-ms-overflow-style:\s*none/);
-  assert.match(css, /\.dropdown-panel::-webkit-scrollbar\s*\{[^}]*display:\s*none/);
-  assert.doesNotMatch(css, /scrollbar-width:\s*thin/);
-  assert.doesNotMatch(css, /overflow-y:\s*hidden/);
+  assert.match(panel, /overflow-y:\s*auto/);
+  assert.doesNotMatch(panel, /scrollbar-width|::-webkit-scrollbar/);
+  assert.doesNotMatch(panel, /overflow-y:\s*hidden/);
+  assert.match(estilos, /html,\s*body,\s*\*\s*\{[^}]*scrollbar-width:\s*none[^}]*-ms-overflow-style:\s*none/s);
 });
 
 test('el panel flotante usa portal, alineación central y separación de 10 px', () => {

@@ -199,6 +199,19 @@ async function verificarShell(page, etiqueta) {
   assert.equal(despues.sidebarTop, antes.sidebar.top, `${etiqueta}: la sidebar se movió al hacer scroll`);
   assert.equal(despues.sidebarBottom, antes.sidebar.bottom, `${etiqueta}: la sidebar cambió de altura`);
 
+  const sidebarScroll = await page.evaluate(() => {
+    const nav = document.querySelector('.side-nav');
+    const estilo = getComputedStyle(nav);
+    return {
+      overflowY: estilo.overflowY,
+      scrollbarWidth: estilo.scrollbarWidth,
+      barra: nav.offsetWidth - nav.clientWidth,
+    };
+  });
+  assert.equal(sidebarScroll.overflowY, 'auto', `${etiqueta}: la navegación perdió overflow-y: auto`);
+  assert.equal(sidebarScroll.scrollbarWidth, 'none', `${etiqueta}: scrollbar-width de la navegación no es none`);
+  assert.equal(sidebarScroll.barra, 0, `${etiqueta}: la navegación muestra una barra de scroll`);
+
   // Sin hover, la sidebar debe ser el carril contraído de 72 px.
   await page.mouse.move(1400, 450);
   await page.waitForTimeout(250);
@@ -522,6 +535,44 @@ try {
         await page.setViewportSize(viewport);
         await visitar(page, '/inicio', 'Accede al Portal laboral');
       }
+    });
+
+    await ejecutar('público: scrollbars ocultos con scroll vertical y horizontal funcional', async () => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await visitar(page, '/politica-cookies', 'Política de Cookies');
+
+      const vertical = await page.evaluate(() => {
+        const antes = window.scrollY;
+        window.scrollTo(0, document.documentElement.scrollHeight);
+        return { antes, despues: window.scrollY };
+      });
+      assert.ok(vertical.despues > vertical.antes, 'el documento no permite scroll vertical');
+
+      const tabla = await page.locator('.legal-table-wrap').first().evaluate((el) => {
+        const estilo = getComputedStyle(el);
+        const bordes = parseFloat(estilo.borderLeftWidth) + parseFloat(estilo.borderRightWidth);
+        el.scrollLeft = el.scrollWidth;
+        return {
+          overflowX: estilo.overflowX,
+          scrollbarWidth: estilo.scrollbarWidth,
+          scrollWidth: el.scrollWidth,
+          clientWidth: el.clientWidth,
+          scrollLeft: el.scrollLeft,
+          barra: el.offsetWidth - el.clientWidth - bordes,
+          html: getComputedStyle(document.documentElement).scrollbarWidth,
+          body: getComputedStyle(document.body).scrollbarWidth,
+          docBarra: document.documentElement.offsetWidth - document.documentElement.clientWidth,
+        };
+      });
+
+      assert.equal(tabla.scrollbarWidth, 'none', 'la tabla no usa la política global de scrollbars');
+      assert.equal(tabla.html, 'none', 'html no usa la política global de scrollbars');
+      assert.equal(tabla.body, 'none', 'body no usa la política global de scrollbars');
+      assert.equal(tabla.overflowX, 'auto', 'la tabla perdió overflow-x: auto');
+      assert.ok(tabla.scrollWidth > tabla.clientWidth, 'la tabla de prueba no desborda horizontalmente');
+      assert.ok(tabla.scrollLeft > 0, 'la tabla no permite desplazamiento horizontal');
+      assert.equal(tabla.barra, 0, 'la tabla muestra una barra de scroll horizontal');
+      assert.ok(tabla.docBarra <= 1, 'el documento muestra una barra de scroll vertical');
     });
 
     await guardarErrores('publico', errores);

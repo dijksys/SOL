@@ -51,22 +51,17 @@ test('la sidebar inicia contraída y se expande al pasar el cursor', () => {
   assert.doesNotMatch(estilos, /\.sidebar[^{]*:focus-within|\.side-[^{]*:focus-within/);
 });
 
-test('el estado contraído conserva tooltips y los enlaces son accesibles', () => {
+test('el estado contraído conserva títulos nativos y enlaces accesibles', () => {
   const sidebar = leer('../src/components/Sidebar.jsx');
   const estilos = leer('../src/styles.css');
 
-  assert.match(sidebar, /data-tooltip=\{item\.texto\}/);
   assert.match(sidebar, /title=\{item\.texto\}/);
   assert.match(sidebar, /aria-label=\{item\.texto\}/);
-  assert.match(
-    estilos,
-    /\.sidebar:not\(:hover\) \.side-link::after\s*\{[^}]*content:\s*attr\(data-tooltip\)/s,
-  );
-  assert.match(
-    estilos,
-    /\.sidebar:not\(:hover\) \.side-link:focus-visible::after\s*\{[^}]*opacity:\s*1/s,
-  );
+  assert.doesNotMatch(sidebar, /data-tooltip/);
+  assert.doesNotMatch(estilos, /\.side-link::after/);
   assert.match(estilos, /\.side-link:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--accion-foco\)/s);
+  assert.match(estilos, /\.side-nav\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.doesNotMatch(estilos, /\.sidebar:not\(:hover\) \.side-nav\s*\{[^}]*overflow/s);
 });
 
 test('la sidebar es una tarjeta clara sin divisores entre categorías', () => {
