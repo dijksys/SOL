@@ -19,6 +19,12 @@
 
 /* ---------- Barra lateral (geometría común en styles.css) ---------- */
 
+/* El workspace es el contenedor de referencia del separador de cabecera. */
+.app-empresa .app-workspace {
+  position: relative;
+  container-type: inline-size;
+}
+
 /* ---------- Contenido ---------- */
 .app-empresa .content {
   flex: 1 1 auto;
@@ -42,6 +48,26 @@
   border-bottom: 1px solid var(--line);
   margin: 0 -35px 26px;
   padding: 0 35px;
+}
+
+/* Cuando el workspace supera el límite de 1600 px del contenido, el borde
+   del encabezado se sustituye por una línea de ancho completo del workspace. */
+.app-empresa .empresa-header-rule { display: none; }
+
+@container (min-width: 1601px) {
+  .app-empresa .empresa-header-rule {
+    display: block;
+    position: absolute;
+    top: var(--shell-header-h);
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--line);
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .app-empresa .content .page-head { border-bottom: 0; }
 }
 
 /* ---------- KPI ---------- */

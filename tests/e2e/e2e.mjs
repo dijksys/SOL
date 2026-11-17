@@ -290,6 +290,99 @@ async function verificarShell(page, etiqueta) {
   });
 }
 
+async function verificarSeparadorEmpresa(page, ruta, texto) {
+  await page.setViewportSize({ width: 1920, height: 900 });
+  await visitar(page, ruta, texto);
+  await page.mouse.move(1900, 450);
+  await page.waitForTimeout(250);
+
+  const medir = () => page.evaluate(() => {
+    const workspace = document.querySelector('.app-workspace').getBoundingClientRect();
+    const content = document.querySelector('.content').getBoundingClientRect();
+    const head = document.querySelector('.page-head').getBoundingClientRect();
+    const regla = document.querySelector('.empresa-header-rule');
+    const caja = regla.getBoundingClientRect();
+    return {
+      workspace: { left: workspace.left, right: workspace.right, width: workspace.width },
+      contentWidth: content.width,
+      headBottom: head.bottom,
+      regla: {
+        left: caja.left,
+        right: caja.right,
+        width: caja.width,
+        top: caja.top,
+        display: getComputedStyle(regla).display,
+      },
+      docW: document.documentElement.scrollWidth,
+      winW: window.innerWidth,
+    };
+  });
+
+  const comprobar = (medida, estado) => {
+    assert.notEqual(medida.regla.display, 'none', `${texto} ${estado}: separador oculto`);
+    assert.ok(
+      Math.abs(medida.regla.left - (medida.workspace.left + 1)) <= 1,
+      `${texto} ${estado}: separador no llega al borde izquierdo`,
+    );
+    assert.ok(
+      Math.abs(medida.regla.right - (medida.workspace.right - 1)) <= 1,
+      `${texto} ${estado}: separador no llega al borde derecho`,
+    );
+    assert.ok(
+      Math.abs(medida.regla.width - (medida.workspace.width - 2)) <= 2,
+      `${texto} ${estado}: ancho del separador distinto al workspace`,
+    );
+    assert.ok(
+      Math.abs(medida.regla.top - medida.headBottom) <= 1,
+      `${texto} ${estado}: separador desalineado del encabezado`,
+    );
+    assert.ok(medida.contentWidth <= 1601, `${texto} ${estado}: se perdió el límite de 1600 px`);
+    assert.ok(medida.docW <= medida.winW + 1, `${texto} ${estado}: desbordamiento horizontal`);
+  };
+
+  const contraida = await medir();
+  comprobar(contraida, 'sidebar contraída');
+
+  await page.locator('.sidebar').hover();
+  await page.waitForTimeout(90);
+  const durante = await medir();
+  assert.ok(
+    Math.abs(durante.regla.width - (durante.workspace.width - 2)) <= 2,
+    `${texto}: el separador no sigue el ancho durante la transición`,
+  );
+  assert.ok(durante.docW <= durante.winW + 1, `${texto}: desbordamiento horizontal durante la transición`);
+
+  await page.waitForTimeout(250);
+  const expandida = await medir();
+  comprobar(expandida, 'sidebar expandida');
+
+  await page.mouse.move(1900, 450);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(150);
+}
+
+async function verificarSeparadorEmpresaMovil(page) {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await visitar(page, '/empresa/dashboard', 'Panel de empresa');
+  const medida = await page.evaluate(() => {
+    const head = document.querySelector('.page-head');
+    const regla = document.querySelector('.empresa-header-rule');
+    return {
+      displayRegla: getComputedStyle(regla).display,
+      bordeHead: getComputedStyle(head).borderBottomWidth,
+      estiloBorde: getComputedStyle(head).borderBottomStyle,
+      docW: document.documentElement.scrollWidth,
+      winW: window.innerWidth,
+    };
+  });
+  assert.equal(medida.displayRegla, 'none', 'empresa móvil: la regla de escritorio no debe mostrarse');
+  assert.equal(medida.estiloBorde, 'solid', 'empresa móvil: el encabezado perdió su borde');
+  assert.equal(medida.bordeHead, '1px', 'empresa móvil: el borde del encabezado no mide 1px');
+  assert.ok(medida.docW <= medida.winW + 1, 'empresa móvil: desbordamiento horizontal');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.waitForTimeout(150);
+}
+
 async function esperarPanel(page, selector = '.dropdown-panel') {
   const panel = page.locator(selector);
   await panel.waitFor({ state: 'visible' });
@@ -1330,6 +1423,12 @@ try {
     if (!sesion) {
       bloqueado('empresa: formulario de oferta', 'sesión de empresa no iniciada');
     } else {
+      await ejecutar('empresa: separador de cabecera ocupa todo el workspace', async () => {
+        await verificarSeparadorEmpresa(page, '/empresa/dashboard', 'Panel de empresa');
+        await verificarSeparadorEmpresa(page, '/empresa/postulaciones', 'Postulaciones');
+        await verificarSeparadorEmpresaMovil(page);
+      });
+
       await ejecutar('empresa: shell estable con scroll interno', async () => {
         await visitar(page, '/empresa/contrataciones', 'Contrataciones');
         await verificarShell(page, 'empresa');

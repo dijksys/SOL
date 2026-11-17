@@ -76,6 +76,7 @@ export function LayoutEmpresa() {
       />
 
       <main className="main app-workspace">
+        <div className="empresa-header-rule" aria-hidden="true" />
         <section className="content">
           <Outlet />
         </section>
