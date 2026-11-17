@@ -199,13 +199,68 @@ async function verificarShell(page, etiqueta) {
   assert.equal(despues.sidebarTop, antes.sidebar.top, `${etiqueta}: la sidebar se movió al hacer scroll`);
   assert.equal(despues.sidebarBottom, antes.sidebar.bottom, `${etiqueta}: la sidebar cambió de altura`);
 
-  const anchoExpandido = await page.locator('.app-workspace').evaluate((el) => el.getBoundingClientRect().width);
-  await page.locator('.side-colapsar').click();
+  // Sin hover, la sidebar debe ser el carril contraído de 72 px.
+  await page.mouse.move(1400, 450);
   await page.waitForTimeout(250);
-  const anchoColapsado = await page.locator('.app-workspace').evaluate((el) => el.getBoundingClientRect().width);
-  assert.ok(anchoColapsado > anchoExpandido + 100, `${etiqueta}: el workspace no recupera ancho al colapsar`);
-  await page.locator('.side-colapsar').click();
+  const contraida = await page.evaluate(() => {
+    const sidebar = document.querySelector('.sidebar').getBoundingClientRect();
+    const workspace = document.querySelector('.app-workspace').getBoundingClientRect();
+    return {
+      sidebarW: sidebar.width,
+      workspaceW: workspace.width,
+      docW: document.documentElement.scrollWidth,
+      winW: window.innerWidth,
+    };
+  });
+  assert.ok(contraida.sidebarW <= 80, `${etiqueta}: la sidebar no inicia contraída (${contraida.sidebarW}px)`);
+  assert.ok(contraida.docW <= contraida.winW + 1, `${etiqueta}: desbordamiento horizontal al iniciar`);
+  const etiquetaContraida = await page.locator('.side-link-text').first().evaluate((el) => getComputedStyle(el).display);
+  assert.equal(etiquetaContraida, 'none', `${etiqueta}: las etiquetas deben ocultarse al estar contraída`);
+
+  // El hover expande la sidebar y el workspace cede el espacio.
+  await page.locator('.sidebar').hover();
   await page.waitForTimeout(250);
+  const expandida = await page.evaluate(() => {
+    const sidebar = document.querySelector('.sidebar').getBoundingClientRect();
+    const workspace = document.querySelector('.app-workspace').getBoundingClientRect();
+    return {
+      sidebarW: sidebar.width,
+      workspaceW: workspace.width,
+      docW: document.documentElement.scrollWidth,
+      winW: window.innerWidth,
+    };
+  });
+  assert.ok(expandida.sidebarW >= 260, `${etiqueta}: la sidebar no se expande con hover (${expandida.sidebarW}px)`);
+  assert.ok(
+    expandida.workspaceW < contraida.workspaceW - 100,
+    `${etiqueta}: el workspace no cede ancho al expandir la sidebar`,
+  );
+  assert.ok(expandida.docW <= expandida.winW + 1, `${etiqueta}: desbordamiento horizontal al expandir`);
+  const etiquetaExpandida = await page.locator('.side-link-text').first().evaluate((el) => getComputedStyle(el).display);
+  assert.notEqual(etiquetaExpandida, 'none', `${etiqueta}: las etiquetas deben mostrarse al expandir`);
+
+  // El foco del enlace no debe mantener la sidebar abierta si el puntero sale.
+  await page.locator('.side-nav .side-link.active').first().click();
+  const focoEnlace = await page.evaluate(() => document.activeElement?.classList.contains('side-link'));
+  assert.equal(focoEnlace, true, `${etiqueta}: el enlace debe conservar el foco tras navegar`);
+  await page.mouse.move(1400, 450);
+  await page.waitForTimeout(250);
+  const recuperada = await page.evaluate(() => {
+    const sidebar = document.querySelector('.sidebar').getBoundingClientRect();
+    const workspace = document.querySelector('.app-workspace').getBoundingClientRect();
+    return {
+      sidebarW: sidebar.width,
+      workspaceW: workspace.width,
+      docW: document.documentElement.scrollWidth,
+      winW: window.innerWidth,
+    };
+  });
+  assert.ok(recuperada.sidebarW <= 80, `${etiqueta}: la sidebar no se contrae al salir del hover`);
+  assert.ok(
+    Math.abs(recuperada.workspaceW - contraida.workspaceW) <= 2,
+    `${etiqueta}: el workspace no recupera su ancho al contraerse`,
+  );
+  assert.ok(recuperada.docW <= recuperada.winW + 1, `${etiqueta}: desbordamiento horizontal al contraer`);
 
   await page.evaluate(() => {
     document.getElementById('e2e-shell-spacer')?.remove();
@@ -1137,6 +1192,12 @@ try {
         await visitar(page, '/admin/dashboard', 'Dashboard');
         await page.locator('.side-movil-burger').click();
         await page.waitForFunction(() => document.querySelector('.sidebar')?.classList.contains('abierto'));
+        const drawer = await page.locator('.sidebar').evaluate((el) => ({
+          ancho: el.getBoundingClientRect().width,
+          etiqueta: getComputedStyle(el.querySelector('.side-link-text')).display,
+        }));
+        assert.ok(drawer.ancho > 200, `admin móvil: drawer no expandido (${drawer.ancho}px)`);
+        assert.notEqual(drawer.etiqueta, 'none', 'admin móvil: el drawer debe mostrar las etiquetas');
         await page.locator('.side-cerrar-movil').click();
         await page.waitForFunction(() => !document.querySelector('.sidebar')?.classList.contains('abierto'));
         await sinDesbordamiento(page, 'admin móvil');

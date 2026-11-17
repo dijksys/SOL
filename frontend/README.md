@@ -95,8 +95,8 @@ src/
 ├── components/     UI compartida (UI, PageHeader, CvUploader, StatCard, GoogleButton,
 │                   SeoMeta…)
 ├── context/        AuthContext y ThemeContext (sesión, tema y preferencias)
-├── hooks/          useAccion, useClickFuera, usePermisosMunicipales,
-│                   useSidebarColapsado y utilidades de UI
+├── hooks/          useAccion, useClickFuera, usePermisosMunicipales
+│                   y utilidades de UI
 ├── layouts/        LayoutApp (admin legacy), LayoutAdmin, LayoutEmpresa,
 │                   LayoutPostulante y LayoutBusqueda (bolsa pública sin sesión)
 ├── pages/          auth (login, registro, registro-empresa, activar-cuenta),
@@ -120,7 +120,8 @@ src/
 - **Empresa y postulante**: layouts propios con navegación por rol, tarjetas de oferta
   (`job-card`), filtros tipo *pill*, chips de estado y diseño responsive; cada rol está
   scoped bajo su clase contenedora (`.app-empresa`, `.app-postulante`).
-- **Admin**: panel con sidebar propio y tarjetas de indicadores.
+- **Admin y Empresa**: sidebar compartida que inicia como carril de iconos y se expande
+  al pasar el cursor en escritorio; en móvil se abre como drawer superpuesto.
 - Los estilos de cada rol no deben mezclarse: si una página cambia de layout, revisar sus
   clases contra el CSS correspondiente.
 

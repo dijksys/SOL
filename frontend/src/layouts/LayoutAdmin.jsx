@@ -17,7 +17,6 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { usePermisosMunicipales } from '../hooks/usePermisosMunicipales';
 import Sidebar from '../components/Sidebar';
-import { useSidebarColapsado } from '../hooks/useSidebarColapsado';
 import { pendientesAdmin } from '../services/dashboard';
 import { ETIQUETA_PERFIL_MUNICIPAL } from '../constants';
 
@@ -80,7 +79,6 @@ export function LayoutAdmin() {
   const { usuario } = useAuth();
   const { perfil, puede } = usePermisosMunicipales();
   const { pathname } = useLocation();
-  const { colapsado, alternar } = useSidebarColapsado();
   const grupos = GRUPOS.map((grupo) => ({
     ...grupo,
     items: grupo.items.filter((item) => item.to !== '/admin/usuarios' || puede('usuarios')),
@@ -106,13 +104,11 @@ export function LayoutAdmin() {
   const nombre = `${usuario?.nombres || ''} ${usuario?.apellidos || ''}`.trim() || 'Administrador';
 
   return (
-    <div className={`app-admin${colapsado ? ' colapsado' : ''}`}>
+    <div className="app-admin">
       <Sidebar
         marca={MARCA}
         grupos={grupos}
         usuario={{ nombre, rol: ETIQUETA_PERFIL_MUNICIPAL[perfil] || 'Municipalidad', respaldo: 'AD' }}
-        colapsado={colapsado}
-        onToggle={alternar}
         indicadores={indicadores}
       />
 

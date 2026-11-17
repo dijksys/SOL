@@ -13,7 +13,6 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import Sidebar from '../components/Sidebar';
-import { useSidebarColapsado } from '../hooks/useSidebarColapsado';
 import { perfilEmpresa, pendientesEmpresa } from '../services/empresas';
 import { STALE } from '../queryConfig';
 
@@ -53,7 +52,6 @@ const MARCA = {
 export function LayoutEmpresa() {
   const { usuario } = useAuth();
   const { data: perfil } = useQuery({ queryKey: ['perfil-empresa'], queryFn: perfilEmpresa, staleTime: STALE.perfil });
-  const { colapsado, alternar } = useSidebarColapsado();
   const nombre = perfil?.nombre_comercial || perfil?.razon_social || usuario?.nombres || 'Empresa';
 
   const { data: pendientes } = useQuery({
@@ -69,13 +67,11 @@ export function LayoutEmpresa() {
   };
 
   return (
-    <div className={`app-empresa${colapsado ? ' colapsado' : ''}`}>
+    <div className="app-empresa">
       <Sidebar
         marca={MARCA}
         grupos={GRUPOS}
         usuario={{ nombre, rol: 'Empresa', respaldo: 'EM' }}
-        colapsado={colapsado}
-        onToggle={alternar}
         indicadores={indicadores}
       />
 

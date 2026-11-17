@@ -49,6 +49,8 @@ entorno local/CI; no son credenciales de producción.
 - Postulante: perfil, postulaciones, cuenta, búsqueda y oportunidades.
 - Interacciones: apertura/cierre del alta de usuario, editores de actividad y
   oportunidad, formulario de oferta y drawer móvil.
+- Shell: sidebar contraída al iniciar, expansión por hover, contracción al salir
+  del puntero, recuperación del ancho del workspace y navegación sin desbordamiento.
 - Responsive: 1440×900, 768×1024, 390×844 y 360×800, con comprobación de
   desbordamiento horizontal y errores de consola/API.
 

@@ -64,13 +64,6 @@ export default function PoliticaTecnologiasWeb() {
                 <td>Hasta el cierre de sesión o la expiración configurada; por defecto 15 días.</td>
                 <td>Estrictamente necesaria para conservar la sesión.</td>
               </tr>
-              <tr>
-                <td><code>sol-sidebar-colapsado</code></td>
-                <td><code>localStorage</code></td>
-                <td>Recordar si el menú lateral de los paneles está contraído.</td>
-                <td>Persiste hasta que el usuario borre los datos del sitio o cambie la preferencia.</td>
-                <td>Preferencia funcional, no publicitaria.</td>
-              </tr>
             </tbody>
           </table>
         </div>
