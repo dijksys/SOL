@@ -22,7 +22,7 @@ dentro de contenedores; no se requiere PHP, Composer, Node.js ni MariaDB en el h
   logs [servicio]    Sigue los logs (por defecto, todos).
   build              Reconstruye las imágenes de desarrollo.
   deps               Reinstala dependencias PHP/npm desde los lockfiles.
-  build-frontend     Genera el build de producción del frontend en el contenedor.
+  build-frontend     Genera los artefactos optimizados de Vite para validar la compilación del frontend.
   cache              Limpia la caché de CodeIgniter.
   shell [servicio]   Abre una shell (por defecto backend).
   exec <svc> <cmd...> Ejecuta un comando en un contenedor en ejecución.

@@ -244,6 +244,8 @@ Este repositorio no incluye:
 - Compose de producción ni overrides productivos.
 - Traefik, dominios públicos, ACME o certificados TLS.
 - Nginx de borde ni plantillas de proxy público.
+- Servidor de frontend para producción; `build-frontend` solo genera artefactos
+  optimizados de Vite para validar la compilación.
 - Scripts de despliegue, actualización de servidores o publicación.
 
 Cada institución define su propio procedimiento de despliegue a partir del código

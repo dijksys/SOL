@@ -172,8 +172,8 @@ Pasos para un entorno existente:
 1. Obtener el token en <https://apisperu.com/admin/dniruc>.
 2. Configurar `apisperu.baseURL`, `apisperu.token` y `apisperu.timeout` en el
    `.env` privado.
-3. Regenerar el entorno filtrado con `./deploy/scripts/dev.sh up` (o el script
-   de despliegue correspondiente).
+3. Regenerar el entorno filtrado mediante los scripts de desarrollo local
+   (`./deploy/scripts/dev.sh up`).
 4. Verificar que `deploy/runtime/backend.env` contiene `apisperu.*` y ningún
    token antiguo.
 5. Ejecutar las pruebas y un smoke de `/api/verificar-dni` y

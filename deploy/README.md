@@ -8,7 +8,7 @@ del backend. No incluye infraestructura ni procedimientos de producción.
 
 ```
 deploy/
-├── compose.yaml          Stack único de desarrollo (db, backend, frontend, Adminer)
+├── compose.yaml          Stack único de desarrollo (db, backend, frontend; Adminer opcional en el perfil tools)
 ├── e2e/Dockerfile        Imagen de pruebas con Chromium Headless Shell
 ├── scripts/
 │   ├── dev.sh            Inicio, parada, logs, shell, migraciones y seeds
@@ -59,8 +59,9 @@ Complete en `.env`:
 | `frontend` | `frontend/Dockerfile` target `dev` | `127.0.0.1:5173` | Vite con hot reload |
 | `adminer` | `adminer:5.3.0` | `127.0.0.1:8082` | Perfil opcional `tools` |
 
-Todos los puertos se publican solo en `127.0.0.1`. La red `internal` es privada
-del proyecto Compose.
+Los tres servicios principales son `db`, `backend` y `frontend`; `adminer` solo
+se inicia con el perfil `tools`. Todos los puertos se publican solo en
+`127.0.0.1`. La red `internal` es privada del proyecto Compose.
 
 ## 5. Dependencias
 

@@ -6,25 +6,34 @@ empresas, postulaciones con CV y trazabilidad de contrataciones.
 
 > **Distribución de desarrollo local**
 >
-> Este repositorio proporciona exclusivamente un entorno de desarrollo local de
-> SOL, ejecutado mediante Docker y Docker Compose.
+> Este repositorio proporciona una configuración de desarrollo local para SOL,
+> basada en Docker y Docker Compose. La composición principal ejecuta tres
+> servicios: `frontend` (React y Vite), `backend` (CodeIgniter 4 y PHP) y `db`
+> (MariaDB 11.4). Adminer está disponible como herramienta opcional mediante el
+> perfil `tools`.
 >
-> Permite construir, ejecutar, modificar, depurar y probar SOL sin instalar
-> dependencias del stack en el sistema anfitrión.
+> Este entorno permite construir, ejecutar, modificar, depurar y probar SOL sin
+> instalar PHP, Composer, Node.js, npm ni MariaDB en el sistema anfitrión. Para
+> utilizarlo se requiere Git, Docker Engine o Docker Desktop y Docker Compose.
 >
-> La infraestructura Docker incluida está destinada exclusivamente al desarrollo
-> local y no constituye una arquitectura de despliegue productivo.
+> La infraestructura Docker incluida está diseñada exclusivamente para
+> desarrollo y validación local. No constituye una arquitectura productiva ni
+> una distribución lista para desplegar en una municipalidad, institución u
+> organización.
 >
-> SOL no prescribe ni proporciona una solución universal de despliegue para
-> municipalidades, instituciones, organizaciones o servidores externos.
+> El repositorio no proporciona una composición productiva de servicios, un
+> servidor de frontend para producción, reverse proxy público, configuración
+> TLS, certificados, dominios, orquestación, gestión de secretos productivos ni
+> procedimientos de publicación y despliegue.
 >
-> Cada entidad que adopte el proyecto deberá definir independientemente su
-> arquitectura de despliegue, infraestructura, seguridad, almacenamiento, redes,
-> dominios, certificados, monitoreo y procedimientos operativos, según sus
-> propias necesidades y políticas.
+> SOL no prescribe ni proporciona una solución universal de despliegue. Cada
+> entidad que adopte el proyecto deberá diseñar, implementar, validar y operar
+> independientemente su propia infraestructura, seguridad, almacenamiento,
+> redes, dominios, certificados, respaldos, monitoreo y procedimientos
+> operativos, de acuerdo con sus necesidades y políticas institucionales.
 >
-> La distribución local no debe utilizarse directamente como configuración de
-> producción.
+> La configuración y los scripts de desarrollo local no deben utilizarse
+> directamente como solución de producción.
 
 **Versión actual:** `1.5.4` (fuente única: `VERSION`).
 
@@ -256,7 +265,7 @@ contenedor con `./deploy/scripts/dev.sh db`.
 ./deploy/scripts/dev.sh down               # detener (conserva volúmenes)
 ./deploy/scripts/dev.sh build              # reconstruir imágenes
 ./deploy/scripts/dev.sh deps               # reinstalar Composer/npm desde lockfiles
-./deploy/scripts/dev.sh build-frontend     # build de producción del frontend
+./deploy/scripts/dev.sh build-frontend     # artefactos optimizados de Vite para validar la compilación
 ./deploy/scripts/dev.sh cache              # limpiar caché de CodeIgniter
 ./deploy/scripts/dev.sh status             # estado y salud
 ./deploy/scripts/dev.sh logs [servicio]    # logs
@@ -271,6 +280,10 @@ contenedor con `./deploy/scripts/dev.sh db`.
 ./deploy/scripts/dev.sh validate           # validar configuración
 ./deploy/scripts/dev.sh test [objetivo]    # pruebas
 ```
+
+El comando `build-frontend` solo genera los artefactos optimizados de Vite
+dentro del contenedor; no publica una release, no despliega ni inicia un
+servidor de producción.
 
 Las herramientas viven dentro de los contenedores; puede comprobarlo sin
 instalar nada en el host:

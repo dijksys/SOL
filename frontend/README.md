@@ -75,6 +75,10 @@ Las variables `VITE_*` se incorporan al bundle público. No incluya secretos del
 `X.Y.Z ESTABLE` o el canal correspondiente. `VERSION` es la única fuente; no se
 edita la versión en `package.json`, `constants.js` ni componentes.
 
+`npm run build` y `./deploy/scripts/dev.sh build-frontend` generan artefactos
+optimizados de Vite para validar la compilación. No incluyen ni inician un
+servidor de producción ni una topología de despliegue.
+
 ## Editor y temas
 
 - El editor de texto enriquecido usa TiPTap y se carga de forma diferida; el

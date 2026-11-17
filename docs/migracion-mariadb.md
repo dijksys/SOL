@@ -248,8 +248,8 @@ Consecuencias:
 - No se debe reutilizar el Compose de desarrollo como configuración de
   producción.
 
-Variables mínimas que deberá definir el entorno productivo, manteniendo la
-separación actual:
+Variables que un entorno productivo deberá definir, solo como referencia
+ilustrativa y manteniendo la separación actual:
 
 ```dotenv
 # Backend (nunca en el frontend)
@@ -268,6 +268,11 @@ MARIADB_DATABASE=<base>
 MARIADB_USER=<usuario>
 MARIADB_PASSWORD=<secreto>
 ```
+
+Esta lista no constituye un `.env` productivo, una configuración completa, una
+guía de instalación ni un procedimiento de despliegue validado. Cada institución
+debe complementarla y validarla según su infraestructura; no certifica
+compatibilidad productiva.
 
 Riesgos de desplegar sin una configuración productiva validada: ausencia de
 TLS, exposición de la base, credenciales débiles, falta de respaldos

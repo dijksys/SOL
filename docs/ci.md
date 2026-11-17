@@ -201,7 +201,12 @@ GitHub y se mantiene.
 
 ## 13. Producción
 
-El repositorio no incluye un stack de producción. CI valida el entorno de
-desarrollo con MariaDB; el despliegue productivo requiere configuración
-externa (TLS, red, secretos, respaldos, monitoreo) definida por cada
-institución.
+El repositorio no incluye un stack de producción ni un procedimiento de
+despliegue institucional. CI es una validación automatizada: construye las
+imágenes necesarias para las pruebas, valida sintaxis y configuración, ejecuta
+PHPUnit y las pruebas del frontend, aplica migraciones y validaciones sobre
+MariaDB, comprueba la compatibilidad y ejecuta smoke y E2E.
+
+CI no publica imágenes en un registro, no genera una release y no despliega SOL
+en servidores externos. Cualquier release o despliegue productivo requiere la
+infraestructura, configuración y procedimientos definidos por cada institución.

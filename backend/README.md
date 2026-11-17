@@ -29,7 +29,8 @@ app/
 
 La configuración es única y vive en el `.env` de la raíz del repositorio
 (CodeIgniter carga esa ruta mediante `Config\Paths::$envDirectory`). El backend
-se ejecuta siempre dentro de Docker.
+se ejecuta siempre dentro de Docker. Las operaciones de esta guía corresponden
+al entorno local de desarrollo.
 
 ```bash
 # desde la raíz
@@ -52,7 +53,8 @@ Para operar el backend:
 ```
 
 El backend se ejecuta en el contenedor de desarrollo con el servidor integrado
-de CodeIgniter. No ejecute `php spark`, Composer ni MariaDB en el host. El bootstrap
+de CodeIgniter para desarrollo; no es un servidor de producción. No ejecute
+`php spark`, Composer ni MariaDB en el host. El bootstrap
 inicial está en `./deploy/scripts/bootstrap.sh` (exige `--authorize`) y las
 operaciones en `docs/operaciones.md`.
 
