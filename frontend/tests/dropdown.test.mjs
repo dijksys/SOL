@@ -47,7 +47,7 @@ test('los paneles conservan el desplazamiento y usan la política global de scro
   assert.match(panel, /overflow-y:\s*auto/);
   assert.doesNotMatch(panel, /scrollbar-width|::-webkit-scrollbar/);
   assert.doesNotMatch(panel, /overflow-y:\s*hidden/);
-  assert.match(estilos, /html,\s*body,\s*\*\s*\{[^}]*scrollbar-width:\s*none[^}]*-ms-overflow-style:\s*none/s);
+  assert.match(estilos, /html,\s*body,\s*#root,[\s\S]*?scrollbar-width:\s*none[^}]*-ms-overflow-style:\s*none/s);
 });
 
 test('el panel flotante usa portal, alineación central y separación de 10 px', () => {

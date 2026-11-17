@@ -10,12 +10,13 @@ test('la política global oculta las barras sin desactivar el desplazamiento', (
 
   assert.match(
     estilos,
-    /html,\s*body,\s*\*\s*\{[^}]*scrollbar-width:\s*none[^}]*-ms-overflow-style:\s*none/s,
+    /html,\s*body,\s*#root,\s*#root \*,\s*body \*,\s*\.scrollbar-hidden,\s*\.admin-scroll-container\s*\{[^}]*scrollbar-width:\s*none[^}]*-ms-overflow-style:\s*none/s,
   );
   assert.match(
     estilos,
-    /html::-webkit-scrollbar,\s*body::-webkit-scrollbar,\s*\*::-webkit-scrollbar\s*\{[^}]*display:\s*none[^}]*width:\s*0[^}]*height:\s*0/s,
+    /html::-webkit-scrollbar,\s*body::-webkit-scrollbar,\s*#root::-webkit-scrollbar,\s*#root \*::-webkit-scrollbar,\s*body \*::-webkit-scrollbar,\s*\.scrollbar-hidden::-webkit-scrollbar,\s*\.admin-scroll-container::-webkit-scrollbar\s*\{[^}]*display:\s*none[^}]*width:\s*0[^}]*height:\s*0/s,
   );
+  assert.match(estilos, /#root \*[\s\S]*?body \*[\s\S]*?\.scrollbar-hidden[\s\S]*?\.admin-scroll-container/);
   assert.doesNotMatch(estilos, /::-webkit-scrollbar-(track|thumb)/);
   assert.doesNotMatch(estilos, /\[data-theme="dark"\] ::-webkit-scrollbar/);
   assert.doesNotMatch(estilos, /scrollbar-width:\s*thin/);

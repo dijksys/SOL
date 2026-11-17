@@ -35,6 +35,8 @@ docker run --rm --network host \
     -e E2E_ADMIN_USER -e E2E_ADMIN_PASS \
     -e E2E_EMPRESA_USER -e E2E_EMPRESA_PASS \
     -e E2E_POSTULANTE_USER -e E2E_POSTULANTE_PASS \
+    -e E2E_MODERADOR_USER -e E2E_MODERADOR_PASS \
+    -e E2E_LECTURA_USER -e E2E_LECTURA_PASS \
     -e E2E_WRITES \
     "$E2E_IMAGE" \
     sh -c 'cp -R /e2e /tmp/e2e && cd /tmp/e2e && npm ci --omit=dev --ignore-scripts --no-audit --no-fund >/dev/null && node e2e.mjs'

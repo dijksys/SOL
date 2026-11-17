@@ -324,14 +324,22 @@ body {
    disponible con rueda, touchpad, gestos, teclado y scroll programático. */
 html,
 body,
-* {
+#root,
+#root *,
+body *,
+.scrollbar-hidden,
+.admin-scroll-container {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
 
 html::-webkit-scrollbar,
 body::-webkit-scrollbar,
-*::-webkit-scrollbar {
+#root::-webkit-scrollbar,
+#root *::-webkit-scrollbar,
+body *::-webkit-scrollbar,
+.scrollbar-hidden::-webkit-scrollbar,
+.admin-scroll-container::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;

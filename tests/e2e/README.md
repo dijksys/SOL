@@ -36,6 +36,8 @@ Variables opcionales:
 - `E2E_ADMIN_USER` / `E2E_ADMIN_PASS`
 - `E2E_EMPRESA_USER` / `E2E_EMPRESA_PASS`
 - `E2E_POSTULANTE_USER` / `E2E_POSTULANTE_PASS`
+- `E2E_MODERADOR_USER` / `E2E_MODERADOR_PASS`
+- `E2E_LECTURA_USER` / `E2E_LECTURA_PASS`
 
 Los valores por defecto coinciden con `DatosPruebaSeeder` y solo existen en el
 entorno local/CI; no son credenciales de producción.
@@ -45,6 +47,8 @@ entorno local/CI; no son credenciales de producción.
 - Público: `/inicio`, `/login`, `/registro`, `/registro-empresa`.
 - Administración: dashboard, usuarios, empresas, solicitudes, ofertas,
   actividades, difusión y contrataciones.
+- Moderador y Solo lectura: shell compartido de Administración y navegación
+  sin scrollbars visibles.
 - Empresa: dashboard, perfil, ofertas, postulaciones, contrataciones y cuenta.
 - Postulante: perfil, postulaciones, cuenta, búsqueda y oportunidades.
 - Interacciones: apertura/cierre del alta de usuario, editores de actividad y

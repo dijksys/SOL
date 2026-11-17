@@ -28,6 +28,14 @@ const CREDENCIALES = {
     usuario: process.env.E2E_POSTULANTE_USER || '12345678',
     clave: process.env.E2E_POSTULANTE_PASS || 'Postu123!',
   },
+  moderador: {
+    usuario: process.env.E2E_MODERADOR_USER || 'moderador',
+    clave: process.env.E2E_MODERADOR_PASS || 'Moderador123!',
+  },
+  lectura: {
+    usuario: process.env.E2E_LECTURA_USER || 'lectura',
+    clave: process.env.E2E_LECTURA_PASS || 'Lectura123!',
+  },
 };
 
 function rutaChromium() {
@@ -300,6 +308,8 @@ async function medirScroll(panel) {
       clientHeight: el.clientHeight,
       scrollTop: el.scrollTop,
       barraAncho: el.offsetWidth - el.clientWidth - bordes,
+      enBody: el.ownerDocument.body.contains(el),
+      enRoot: Boolean(document.getElementById('root')?.contains(el)),
     };
   });
 }
@@ -308,6 +318,8 @@ function assertSinBarraVisible(medida, etiqueta) {
   assert.equal(medida.overflowY, 'auto', `${etiqueta}: se perdió overflow-y: auto`);
   assert.equal(medida.scrollbarWidth, 'none', `${etiqueta}: scrollbar-width no es none`);
   assert.equal(medida.barraAncho, 0, `${etiqueta}: hay una barra de scroll visible`);
+  assert.equal(medida.enBody, true, `${etiqueta}: el panel no está montado en body`);
+  assert.equal(medida.enRoot, false, `${etiqueta}: el panel portal no debe estar dentro de #root`);
 }
 
 async function verificarCatalogoCategorias(page) {
@@ -561,6 +573,8 @@ try {
           barra: el.offsetWidth - el.clientWidth - bordes,
           html: getComputedStyle(document.documentElement).scrollbarWidth,
           body: getComputedStyle(document.body).scrollbarWidth,
+          root: getComputedStyle(document.getElementById('root')).scrollbarWidth,
+          rootHijo: getComputedStyle(document.querySelector('#root *')).scrollbarWidth,
           docBarra: document.documentElement.offsetWidth - document.documentElement.clientWidth,
         };
       });
@@ -568,6 +582,8 @@ try {
       assert.equal(tabla.scrollbarWidth, 'none', 'la tabla no usa la política global de scrollbars');
       assert.equal(tabla.html, 'none', 'html no usa la política global de scrollbars');
       assert.equal(tabla.body, 'none', 'body no usa la política global de scrollbars');
+      assert.equal(tabla.root, 'none', '#root no usa la política global de scrollbars');
+      assert.equal(tabla.rootHijo, 'none', 'los descendientes de #root no usan la política global');
       assert.equal(tabla.overflowX, 'auto', 'la tabla perdió overflow-x: auto');
       assert.ok(tabla.scrollWidth > tabla.clientWidth, 'la tabla de prueba no desborda horizontalmente');
       assert.ok(tabla.scrollLeft > 0, 'la tabla no permite desplazamiento horizontal');
@@ -1243,12 +1259,19 @@ try {
         await visitar(page, '/admin/dashboard', 'Dashboard');
         await page.locator('.side-movil-burger').click();
         await page.waitForFunction(() => document.querySelector('.sidebar')?.classList.contains('abierto'));
-        const drawer = await page.locator('.sidebar').evaluate((el) => ({
-          ancho: el.getBoundingClientRect().width,
-          etiqueta: getComputedStyle(el.querySelector('.side-link-text')).display,
-        }));
+        const drawer = await page.locator('.sidebar').evaluate((el) => {
+          const estilo = getComputedStyle(el);
+          return {
+            ancho: el.getBoundingClientRect().width,
+            etiqueta: getComputedStyle(el.querySelector('.side-link-text')).display,
+            overflowY: estilo.overflowY,
+            scrollbarWidth: estilo.scrollbarWidth,
+          };
+        });
         assert.ok(drawer.ancho > 200, `admin móvil: drawer no expandido (${drawer.ancho}px)`);
         assert.notEqual(drawer.etiqueta, 'none', 'admin móvil: el drawer debe mostrar las etiquetas');
+        assert.equal(drawer.overflowY, 'auto', 'admin móvil: el drawer perdió overflow-y: auto');
+        assert.equal(drawer.scrollbarWidth, 'none', 'admin móvil: el drawer muestra scrollbar');
         await page.locator('.side-cerrar-movil').click();
         await page.waitForFunction(() => !document.querySelector('.sidebar')?.classList.contains('abierto'));
         await sinDesbordamiento(page, 'admin móvil');
@@ -1256,6 +1279,27 @@ try {
     }
 
     await guardarErrores('admin', errores);
+    await contexto.close();
+  }
+
+  // Moderador y Solo lectura comparten LayoutAdmin y su shell.
+  for (const rol of ['moderador', 'lectura']) {
+    const contexto = await navegador.newContext({ viewport: { width: 1440, height: 900 }, locale: 'es-PE', timezoneId: 'America/Lima' });
+    const page = await contexto.newPage();
+    const errores = vigilarErrores(page);
+    paginaActiva = page;
+    const sesion = await ejecutar(`${rol}: inicio de sesión`, () => iniciarSesion(page, rol));
+
+    if (!sesion) {
+      bloqueado(`${rol}: shell compartido`, 'sesión municipal no iniciada');
+    } else {
+      await ejecutar(`${rol}: shell compartido sin scrollbars`, async () => {
+        await visitar(page, '/admin/dashboard', 'Dashboard');
+        await verificarShell(page, rol);
+      });
+    }
+
+    await guardarErrores(rol, errores);
     await contexto.close();
   }
 
