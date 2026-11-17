@@ -1,0 +1,359 @@
+/* SPDX-License-Identifier: MIT */
+/* ==========================================================================
+   Módulo empresa — panel lateral azul marino.
+   Solo contiene el shell y las piezas específicas del módulo; los tokens y
+   los componentes base viven en styles.css (fuente única).
+   ========================================================================== */
+
+.app-empresa {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: var(--fondo);
+  color: var(--text-1);
+}
+.app-empresa a:where(:not(.btn)) { color: inherit; }
+
+/* ---------- Barra lateral (geometría común en styles.css) ---------- */
+
+/* ---------- Contenido ---------- */
+.app-empresa .content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 35px 50px;
+  max-width: 1600px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-inline: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Banda de header alineada con la cabecera del Sidebar: misma referencia
+   horizontal que el topbar de Admin (82px + borde inferior con --line). */
+.app-empresa .content .page-head {
+  min-height: var(--shell-header-h);
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  margin: 0 -35px 26px;
+  padding: 0 35px;
+}
+
+/* ---------- KPI ---------- */
+/* Cinco tarjetas equilibradas: 5 en una fila cuando el ancho lo permite; en
+   anchos intermedios se reparten sin dejar una tarjeta huérfana. */
+.app-empresa .kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 22px;
+}
+
+/* ---------- Filtros de la bandeja de postulaciones ---------- */
+.app-empresa .post-filtros {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  max-width: 760px;
+  margin-bottom: 1.1rem;
+}
+@media (max-width: 640px) {
+  .app-empresa .post-filtros { grid-template-columns: 1fr; max-width: none; }
+}
+
+/* ---------- Filtros (chips) ---------- */
+.app-empresa .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.1rem; }
+.app-empresa .chip {
+  background: var(--white);
+  border: 1px solid var(--line);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 0.45rem 0.95rem;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.app-empresa .chip:hover { border-color: var(--blue); color: var(--enlace); }
+.app-empresa .chip:focus-visible {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+.app-empresa .chip:active { transform: translateY(1px); }
+.app-empresa .chip.activo {
+  background: var(--accion-primario);
+  border-color: var(--accion-primario);
+  color: var(--accion-primario-texto);
+}
+
+/* ---------- Ofertas ---------- */
+.app-empresa .oferta-item { border-bottom: 1px solid var(--line); padding: 16px 4px; }
+.app-empresa .oferta-item:last-of-type { border-bottom: none; }
+.app-empresa .oferta-cabeza { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.app-empresa .oferta-titulo { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.app-empresa .oferta-titulo h3 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.app-empresa .oferta-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 7px; color: var(--text-2); font-size: 12.5px; }
+.app-empresa .oferta-meta b { color: var(--text-1); font-weight: 600; }
+.app-empresa .oferta-motivo {
+  margin-top: 10px;
+  color: var(--red-tx);
+  font-size: 12.5px;
+  background: var(--red-bg);
+  display: inline-block;
+  padding: 5px 11px;
+  border-radius: var(--radius-md);
+}
+.app-empresa .oferta-pie { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+.app-empresa .oferta-cierre { font-size: 12.5px; color: var(--text-3); }
+.app-empresa .oferta-acciones { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+/* ---------- Postulaciones ---------- */
+.app-empresa .post-item { border-bottom: 1px solid var(--line); }
+.app-empresa .post-item:last-of-type { border-bottom: none; }
+.app-empresa .post-fila { display: flex; align-items: center; gap: 14px; padding: 15px 4px; flex-wrap: wrap; }
+.app-empresa .post-fila .app-main { flex: 1; min-width: 0; }
+.app-empresa .post-fila .who { font-size: 12.5px; color: var(--text-2); margin-top: 1px; }
+.app-empresa .post-fila .who b { color: var(--text-1); font-weight: 600; }
+.app-empresa .post-detalle { background: var(--sky); border-radius: var(--radius-lg); padding: 16px; margin: 0 4px 16px; }
+.app-empresa .post-detalle h3 { margin: 0 0 8px; font-size: 16px; font-weight: 600; color: var(--ink); }
+.app-empresa .post-detalle .descripcion { margin-bottom: 0.6rem; }
+.app-empresa .post-acciones { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.9rem; }
+.app-empresa .post-acciones .avanzar { font-size: 13px; font-weight: 600; color: var(--text-2); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 1240px) {
+  /* Cinco KPI en 3 columnas (última fila 3 + 2, sin tarjeta sola). */
+  .app-empresa .kpi-row { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  /* Panel móvil superpuesto (reglas generales en styles.css). */
+  .app-empresa .sidebar { position: fixed; }
+  .app-empresa .content { padding: 0 15px 40px; }
+
+  /* Banda de cabecera: título y descripción centrados, CTA a todo el ancho. */
+  .app-empresa .content .page-head {
+    min-height: var(--shell-header-h);
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 10px;
+    margin: 0 -15px 20px;
+    padding: 14px 15px;
+  }
+  .app-empresa .page-head .btn,
+  .app-empresa .tarjeta-titulo .btn,
+  .app-empresa .list-card-head .btn,
+  .app-empresa .form-malla + .btn { width: 100%; }
+
+  /* Menos aire vertical entre bloques en móvil. */
+  .app-empresa .filters { margin-bottom: 16px; }
+
+  /* Cinco KPI en 2 columnas; el quinto (impar) ocupa la fila completa. */
+  .app-empresa .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .app-empresa .kpi-row > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (max-width: 640px) {
+  /* Filtros como rejilla de 2 columnas (mismo criterio que Postulante). */
+  .app-empresa .chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .app-empresa .chip { width: 100%; text-align: center; }
+}
+@media (max-width: 560px) {
+  .app-empresa .page-head h1 { font-size: 20px; }
+  .app-empresa .kpi-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  /* Un KPI impar ocupa la fila completa en lugar de dejar un hueco. */
+  .app-empresa .kpi-row > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* ---------- Perfil de la empresa: foto compacta + datos ---------- */
+/* La foto de identidad ocupa una columna estrecha y los datos aprovechan el
+   resto en la rejilla `.descripcion` (patrón de «Mi perfil laboral»). */
+.app-empresa .empresa-perfil {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 20px 26px;
+  align-items: start;
+}
+/* Tablet/móvil: la foto pasa encima y los datos debajo, sin forzar la rejilla. */
+@media (max-width: 860px) {
+  .app-empresa .empresa-perfil { grid-template-columns: 1fr; }
+  .app-empresa .empresa-perfil > .imagen-compacta { justify-self: center; }
+}
+
+/* ---------- Formulario de contrataciones ---------- */
+/* Registro y edición comparten las mismas cuatro secciones. */
+.app-empresa .contratacion-form { display: flex; flex-direction: column; }
+.app-empresa .contratacion-form .form-seccion {
+  margin: 0;
+  padding: 0 0 18px;
+}
+.app-empresa .contratacion-form .form-seccion + .form-seccion {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+}
+.app-empresa .contratacion-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0 1rem;
+  align-items: start;
+}
+.app-empresa .contratacion-grid--dos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.app-empresa .contratacion-form .campo-ayuda {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.app-empresa .contratacion-form textarea { resize: vertical; line-height: 1.5; }
+
+/* Ficha contextual del candidato (selector en alta, lectura en edición). */
+.app-empresa .contratacion-candidato {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 4px;
+  padding: 14px 16px;
+  background: var(--sky);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+.app-empresa .contratacion-candidato-avatar {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 46px;
+  height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--white);
+  color: var(--blue-tx);
+  font-size: 15px;
+  font-weight: 700;
+}
+.app-empresa .contratacion-candidato-datos {
+  display: flex;
+  flex: 1 1 200px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.app-empresa .contratacion-candidato-datos strong {
+  color: var(--text-1);
+  font-size: 14px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.app-empresa .contratacion-candidato-datos span {
+  color: var(--text-3);
+  font-size: 12.5px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.app-empresa .contratacion-candidato .badge { margin-left: auto; }
+
+/* Selector visual de situación laboral: radios nativos dentro de tarjetas. */
+.app-empresa .contratacion-situaciones { min-width: 0; border: 0; }
+.app-empresa .contratacion-situaciones-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.app-empresa .contratacion-situacion {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.app-empresa .contratacion-situacion:hover { border-color: var(--blue); }
+.app-empresa .contratacion-situacion.is-seleccionada {
+  background: var(--sky);
+  border-color: var(--blue);
+}
+.app-empresa .contratacion-situacion input[type="radio"] {
+  flex: none;
+  width: auto;
+  margin: 3px 0 0;
+  accent-color: var(--blue);
+}
+.app-empresa .contratacion-situacion input[type="radio"]:focus-visible {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+.app-empresa .contratacion-situacion:focus-within {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+.app-empresa .contratacion-situacion-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.app-empresa .contratacion-situacion-texto strong {
+  color: var(--text-1);
+  font-size: 13px;
+  line-height: 1.3;
+}
+.app-empresa .contratacion-situacion-texto small {
+  color: var(--text-3);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.app-empresa .contratacion-situaciones.campo-error .contratacion-situacion { border-color: var(--red-tx); }
+.app-empresa .contratacion-situacion:has(input:disabled) { opacity: 0.65; cursor: not-allowed; }
+.app-empresa .contratacion-situacion-detalle { margin-top: 12px; }
+.app-empresa .contratacion-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding-top: 4px;
+}
+
+@media (max-width: 1100px) {
+  .app-empresa .contratacion-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .app-empresa .contratacion-grid,
+  .app-empresa .contratacion-grid--dos,
+  .app-empresa .contratacion-situaciones-grid { grid-template-columns: 1fr; }
+  .app-empresa .contratacion-candidato .badge { margin-left: 0; }
+  .app-empresa .contratacion-acciones .btn { width: 100%; }
+}
+
+/* En móvil el shell vuelve al flujo normal del documento: la barra superior,
+   el workspace y el formulario se desplazan juntos; el drawer conserva su
+   propio comportamiento superpuesto. */
+@media (max-width: 860px) {
+  .app-empresa {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .app-empresa .content {
+    overflow-x: visible;
+    overflow-y: visible;
+  }
+}
+@media (max-width: 860px) {
+  .app-empresa .app-workspace {
+    flex: 0 0 auto;
+  }
+}
+
+/* Sección 04: el encabezado es el único título visible y queda próximo al
+   textarea; no se altera el espaciado global de .campo ni de .form-seccion. */
+.app-empresa .contratacion-observaciones-seccion .form-seccion-titulo { margin-bottom: 4px; }
+.app-empresa .contratacion-observaciones-seccion .campo { margin-bottom: 0; }

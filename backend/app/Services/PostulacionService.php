@@ -1,0 +1,474 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Services;
+
+use App\Exceptions\ApiException;
+use App\Models\CvModel;
+use App\Models\PostulacionModel;
+use App\Repositories\OfertaRepository;
+use App\Repositories\PostulacionRepository;
+use App\Repositories\PostulanteRepository;
+
+/**
+ * Postulaciones del ciudadano (RF-30..RF-32, RN-13..RN-17).
+ * - Registro individual por postulación (RN-13).
+ * - Máximo una postulación ACTIVA por postulante-oferta (RN-14; reforzado por
+ *   columna generada única en BD).
+ * - La postulación se registra en la bandeja de la empresa (RF-32).
+ * - Retirar = desactivar; nunca se elimina físicamente (RF-38/RN-17).
+ */
+class PostulacionService
+{
+    private PostulacionModel $postulaciones;
+
+    private PostulacionRepository $repository;
+
+    private OfertaRepository $ofertas;
+
+    private PostulanteRepository $perfiles;
+
+    private CvModel $cvs;
+
+    private StorageService $storage;
+
+    /**
+     * Transiciones de estado permitidas por la empresa (RF-36). La selección final
+     * la decide la empresa (RN-18). "no_seleccionado" puede reabrirse a revisión;
+     * "seleccionado" es terminal.
+     */
+    private const TRANSICIONES = [
+        'pendiente'         => ['en_revision', 'no_seleccionado'],
+        'en_revision'       => ['seleccionado', 'no_seleccionado'],
+        'no_seleccionado'   => ['en_revision'],
+    ];
+
+    public function __construct(
+        ?PostulacionModel $postulaciones = null,
+        ?PostulacionRepository $repository = null,
+        ?OfertaRepository $ofertas = null,
+        ?PostulanteRepository $perfiles = null,
+        ?CvModel $cvs = null,
+        ?StorageService $storage = null,
+    ) {
+        $this->postulaciones = $postulaciones ?? model(PostulacionModel::class);
+        $this->repository    = $repository ?? new PostulacionRepository();
+        $this->ofertas       = $ofertas ?? new OfertaRepository();
+        $this->perfiles      = $perfiles ?? new PostulanteRepository();
+        $this->cvs           = $cvs ?? model(CvModel::class);
+        $this->storage       = $storage ?? new StorageService();
+    }
+
+    public function listar(int $postulanteId): array
+    {
+        // Expone la URL pública del logo de la empresa (nunca la clave interna).
+        return array_map(static function (array $fila): array {
+            $fila['logo_url'] = StorageService::urlVersionada('/api/empresas/' . (int) $fila['empresa_id'] . '/logo', $fila['logo_key'] ?? null);
+            $fila['empresa_antiguedad'] = AntiguedadService::texto($fila['empresa_created_at'] ?? null);
+            $fila['retirada_postulante'] = (int) ($fila['retirada_postulante'] ?? 0);
+            unset($fila['logo_key'], $fila['empresa_created_at']);
+
+            return $fila;
+        }, $this->repository->dePostulante($postulanteId));
+    }
+
+    public function postular(int $postulanteId, int $ofertaId): int
+    {
+        // RF-19 ajustado: para postular solo se exige datos personales/contacto
+        // completos y un CV vigente. Formación, experiencia, habilidades y
+        // cursos son opcionales y se pueden llenar después.
+        $completitud = $this->perfiles->completitud($postulanteId);
+        if (! $completitud['completo']) {
+            throw ApiException::conflicto(
+                'Para postularte completa tus datos personales y carga tu CV: ' . implode(', ', $completitud['faltantes']) . '.',
+            );
+        }
+
+        $db = $this->postulaciones->db;
+
+        // El bloqueo del postulante serializa esta creación con una selección
+        // concurrente de la misma persona. Sin él, dos solicitudes podrían leer
+        // "no seleccionado" antes de que la otra confirme la selección.
+        $db->transBegin();
+
+        try {
+            $this->bloquearPostulante($postulanteId);
+            $this->bloquearOferta($ofertaId);
+
+            $oferta = $this->ofertas->detalle($ofertaId);
+            if ($oferta === null || $oferta['estado'] !== 'publicada') {
+                throw ApiException::noEncontrado('La oferta no está disponible para postular.');
+            }
+            if (OfertaService::vencida($oferta['fecha_cierre'] ?? null)) {
+                throw ApiException::conflicto('La oferta ya cerró sus postulaciones.');
+            }
+
+            // La selección formal en cualquier oferta de la empresa bloquea
+            // nuevas postulaciones a esa misma empresa, aunque la postulación
+            // seleccionada se haya desactivado posteriormente.
+            if ($this->repository->seleccionadoEnEmpresa($postulanteId, (int) $oferta['empresa_id'])) {
+                throw ApiException::conflicto(
+                    'Ya fuiste seleccionado por esta empresa. No puedes postular a otra de sus ofertas.',
+                );
+            }
+
+            // RN-14: evita doble postulación activa a la misma oferta.
+            if ($this->repository->tienePostulacionActiva($postulanteId, $ofertaId)) {
+                throw ApiException::conflicto('Ya se registró su postulación a esta oferta.');
+            }
+
+            $ahora = date('Y-m-d H:i:s');
+            // El historial referencia users.id (no postulantes.id).
+            $usuarioId = $this->perfiles->usuarioIdDe($postulanteId) ?? $postulanteId;
+
+            $this->postulaciones->insert([
+                'postulante_id'     => $postulanteId,
+                'oferta_id'         => $ofertaId,
+                'empresa_id'        => (int) $oferta['empresa_id'],
+                'fecha_postulacion' => $ahora,
+                'estado'            => 'pendiente',
+                'activo'            => 1,
+            ]);
+            $id = $this->postulaciones->getInsertID();
+
+            $this->postulaciones->db->table('postulacion_historial')->insert([
+                'postulacion_id'  => $id,
+                'estado_anterior' => null,
+                'estado_nuevo'    => 'pendiente',
+                'usuario_id'      => $usuarioId,
+                'created_at'      => $ahora,
+            ]);
+
+            if (! $db->transStatus()) {
+                throw ApiException::conflicto('No se pudo registrar la postulación. Ya existe una postulación activa a esta oferta.');
+            }
+
+            $db->transCommit();
+
+            return $id;
+        } catch (\Throwable $e) {
+            $db->transRollback();
+
+            throw $e;
+        }
+    }
+
+    public function retirar(int $postulanteId, int $postulacionId): void
+    {
+        $db = $this->postulaciones->db;
+        $db->transBegin();
+
+        try {
+            // Bloquea la fila para que un intento simultáneo de la empresa no
+            // pueda reactivarla mientras se registra el retiro voluntario.
+            $db->query(
+                'SELECT id FROM postulaciones WHERE id = ? AND postulante_id = ? FOR UPDATE',
+                [$postulacionId, $postulanteId],
+            );
+
+            $postulacion = $this->repository->delPostulante($postulanteId, $postulacionId);
+            if ($postulacion === null) {
+                throw ApiException::noEncontrado('La postulación no existe.');
+            }
+            if ((int) $postulacion['activo'] !== 1) {
+                throw ApiException::conflicto('La postulación ya se encuentra retirada.');
+            }
+
+            // Desactivación, no eliminación. La marca distingue este retiro
+            // voluntario de una desactivación hecha por la empresa.
+            $this->postulaciones->update((int) $postulacion['id'], [
+                'activo'              => 0,
+                'retirada_postulante' => 1,
+            ]);
+
+            if (! $db->transStatus()) {
+                throw ApiException::conflicto('No se pudo registrar el retiro de la postulación.');
+            }
+
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+
+            throw $e;
+        }
+    }
+
+    /* ---------------------- Bandeja de la empresa (RF-33..RF-40) ---------------------- */
+
+    public function listarDeEmpresa(int $empresaId, ?string $estado = null, ?int $ofertaId = null, ?string $desde = null, ?string $hasta = null, ?string $q = null): array
+    {
+        // Expone la URL de la foto del candidato (proxy público) y oculta la clave.
+        return array_map(static function (array $fila): array {
+            $fila['foto_url'] = StorageService::urlVersionada(
+                '/api/postulantes/' . (int) $fila['postulante_id'] . '/foto',
+                $fila['foto_key'] ?? null,
+            );
+            $fila['retirada_postulante'] = (int) ($fila['retirada_postulante'] ?? 0);
+            // `oferta_estado` conserva el valor del ENUM; el panel y cualquier
+            // integración deben usar además el estado efectivo (vencida).
+            $fila['oferta_estado_efectivo'] = OfertaService::estadoEfectivo([
+                'estado' => $fila['oferta_estado'] ?? null,
+                'fecha_cierre' => $fila['fecha_cierre'] ?? null,
+            ]);
+            unset($fila['foto_key']);
+
+            return $fila;
+        }, $this->repository->deEmpresa($empresaId, $estado, $ofertaId, $desde, $hasta, $q));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function detalleDeEmpresa(int $empresaId, int $id): array
+    {
+        $postulacion = $this->exigirEmpresa($empresaId, $id);
+
+        return [
+            'id'                  => (int) $postulacion['id'],
+            'fecha_postulacion'   => $postulacion['fecha_postulacion'],
+            'estado'              => $postulacion['estado'],
+            'activo'              => (int) $postulacion['activo'],
+            'retirada_postulante' => (int) ($postulacion['retirada_postulante'] ?? 0),
+            'oferta'              => [
+                'id' => (int) $postulacion['oferta_id'],
+                'puesto' => $postulacion['puesto'],
+                'ubicacion' => $postulacion['ubicacion'],
+                'remuneracion' => $postulacion['remuneracion'],
+                'fecha_cierre' => $postulacion['fecha_cierre'],
+                'estado' => $postulacion['oferta_estado'] ?? null,
+                'estado_efectivo' => OfertaService::estadoEfectivo([
+                    'estado' => $postulacion['oferta_estado'] ?? null,
+                    'fecha_cierre' => $postulacion['fecha_cierre'] ?? null,
+                ]),
+            ],
+            'postulante' => $this->perfiles->perfilCompleto((int) $postulacion['postulante_id']),
+        ];
+    }
+
+    /**
+     * Cambio de estado con validación de transición e historial (RF-36/39/63).
+     */
+    public function cambiarEstadoDeEmpresa(int $empresaId, int $id, string $nuevoEstado): void
+    {
+        // Primera lectura: valida pertenencia antes de abrir transacción. Así
+        // una empresa ajena recibe 404 sin tocar bloqueos ni datos.
+        $postulacion = $this->exigirEmpresa($empresaId, $id);
+        $db = $this->postulaciones->db;
+
+        $db->transBegin();
+
+        try {
+            $this->bloquearPostulante((int) $postulacion['postulante_id']);
+
+            // Relectura bajo bloqueo: otra solicitud pudo seleccionar o
+            // desactivar esta postulación mientras esperábamos el turno.
+            $postulacion = $this->exigirEmpresa($empresaId, $id);
+
+            if ((int) ($postulacion['retirada_postulante'] ?? 0) === 1) {
+                throw ApiException::conflicto(
+                    'Esta postulación fue retirada por el postulante y no puede modificarse desde la empresa.',
+                );
+            }
+            if ((int) $postulacion['activo'] !== 1) {
+                throw ApiException::conflicto('Debe activar la postulación antes de cambiar su estado.');
+            }
+            $permitidos = self::TRANSICIONES[$postulacion['estado']] ?? [];
+            if (! in_array($nuevoEstado, $permitidos, true)) {
+                throw ApiException::conflicto(
+                    "No puede pasar de \"{$postulacion['estado']}\" a \"{$nuevoEstado}\".",
+                );
+            }
+
+            $ahora = date('Y-m-d H:i:s');
+
+            $this->postulaciones->update($id, ['estado' => $nuevoEstado]);
+            // Historial del cambio (RF-39); el primer paso a "en_revision" alimenta el
+            // tiempo de atención (RF-59).
+            $this->postulaciones->db->table('postulacion_historial')->insert([
+                'postulacion_id'  => $id,
+                'estado_anterior' => $postulacion['estado'],
+                'estado_nuevo'    => $nuevoEstado,
+                'usuario_id'      => $this->usuarioEmpresa($empresaId),
+                'created_at'      => $ahora,
+            ]);
+
+            if (! $db->transStatus()) {
+                throw ApiException::conflicto('No se pudo actualizar el estado.');
+            }
+
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+
+            throw $e;
+        }
+    }
+
+    /**
+     * Activar/desactivar postulación sin eliminarla (RF-37/38, RN-17).
+     *
+     * La empresa solo puede alternar la activación de candidatos seleccionados
+     * formalmente. Una postulación retirada voluntariamente por el postulante
+     * no puede modificarse, ni siquiera con una petición sin efecto. El bloqueo
+     * se decide en backend y se coordina con el retiro mediante bloqueo
+     * pesimista de la misma fila.
+     */
+    public function cambiarActivacionDeEmpresa(int $empresaId, int $id, bool $activo): void
+    {
+        // Primera lectura: resuelve pertenencia antes de abrir transacción. Una
+        // empresa ajena recibe 404 sin tocar bloqueos ni datos.
+        $this->exigirEmpresa($empresaId, $id);
+
+        $db = $this->postulaciones->db;
+        $db->transBegin();
+
+        try {
+            $db->query(
+                'SELECT id FROM postulaciones WHERE id = ? AND empresa_id = ? FOR UPDATE',
+                [$id, $empresaId],
+            );
+
+            // Relectura bajo bloqueo: el estado o la marca de retiro pudieron
+            // cambiar mientras esperábamos el turno.
+            $postulacion = $this->exigirEmpresa($empresaId, $id);
+
+            if ((int) ($postulacion['retirada_postulante'] ?? 0) === 1) {
+                throw ApiException::conflicto(
+                    'El postulante retiró voluntariamente esta postulación. La empresa no puede modificar su activación.',
+                );
+            }
+
+            if ((string) $postulacion['estado'] !== 'seleccionado') {
+                throw ApiException::conflicto(
+                    'Solo puede activar o desactivar postulaciones de candidatos que hayan sido seleccionados formalmente.',
+                );
+            }
+
+            // La comprobación de estado y retiro se ejecuta incluso cuando el
+            // valor solicitado coincide con el actual (petición sin efecto).
+            if ((int) $postulacion['activo'] === (int) $activo) {
+                $db->transCommit();
+
+                return;
+            }
+
+            $this->postulaciones->update($id, ['activo' => (int) $activo]);
+
+            if (! $db->transStatus()) {
+                throw ApiException::conflicto('No se pudo actualizar la activación de la postulación.');
+            }
+
+            $db->transCommit();
+        } catch (\Throwable $e) {
+            $db->transRollback();
+
+            throw $e;
+        }
+    }
+
+    /**
+     * URL firmada del CV del postulante, solo si la empresa posee la postulación
+     * (RT-CV-04/05).
+     */
+    public function urlCvAutorizada(int $empresaId, int $id): string
+    {
+        $postulacion = $this->exigirEmpresa($empresaId, $id);
+        $cv = $this->cvs->activoDePostulante((int) $postulacion['postulante_id']);
+
+        if ($cv === null) {
+            throw ApiException::noEncontrado('El postulante aún no ha cargado un CV.');
+        }
+
+        if ($this->storage->esSupabase()) {
+            return $this->storage->urlTemporal($cv->object_key);
+        }
+
+        // Driver local: ruta interna protegida que vuelve a validar la autorización.
+        $clave = rtrim(strtr(base64_encode($cv->object_key), '+/', '-_'), '=');
+
+        return rtrim((string) config('App')->baseURL, '/')
+            . "/api/empresa/postulaciones/{$id}/cv/archivo/{$clave}";
+    }
+
+    /**
+     * Stream del CV con driver local tras validar la autorización (RT-CV-04).
+     *
+     * @return array{ruta: string, nombre: string, mime: string}|null
+     */
+    public function archivoCvAutorizado(int $empresaId, int $id, string $claveCodificada): ?array
+    {
+        $postulacion = $this->exigirEmpresa($empresaId, $id);
+
+        $objectKey = CvService::decodificarClave($claveCodificada);
+        if ($objectKey === null) {
+            return null;
+        }
+
+        $cv = $this->cvs->where('postulante_id', (int) $postulacion['postulante_id'])
+            ->where('object_key', $objectKey)
+            ->first();
+        if ($cv === null) {
+            return null;
+        }
+
+        $ruta = $this->storage->rutaLocal($objectKey);
+
+        return $ruta === null ? null : [
+            'ruta'   => $ruta,
+            'nombre' => $cv->nombre_original,
+            'mime'   => CvService::mimeDeDocumento($objectKey),
+        ];
+    }
+
+    /**
+     * RT-05: la postulación debe pertenecer a la empresa de la sesión.
+     *
+     * @return array<string, mixed>
+     */
+    private function exigirEmpresa(int $empresaId, int $id): array
+    {
+        $fila = $this->repository->deEmpresaPorId($empresaId, $id);
+        if ($fila === null) {
+            throw ApiException::noEncontrado('La postulación no existe.');
+        }
+
+        return $fila;
+    }
+
+    private function usuarioEmpresa(int $empresaId): ?int
+    {
+        $empresa = $this->postulaciones->db->table('empresas')
+            ->select('user_id')
+            ->where('id', $empresaId)
+            ->get()
+            ->getRowArray();
+
+        return $empresa ? (int) $empresa['user_id'] : null;
+    }
+
+    /**
+     * Bloqueo pesimista del postulante. Es la fila común que serializa la
+     * creación de postulaciones con la selección formal de la empresa.
+     */
+    private function bloquearPostulante(int $postulanteId): void
+    {
+        $this->postulaciones->db->query(
+            'SELECT id FROM postulantes WHERE id = ? FOR UPDATE',
+            [$postulanteId],
+        );
+    }
+
+    /**
+     * Bloquea la oferta durante la validación y el alta para que un cambio
+     * concurrente de estado o fecha de cierre no se pierda entre la lectura y
+     * el INSERT.
+     */
+    private function bloquearOferta(int $ofertaId): void
+    {
+        $this->postulaciones->db->query(
+            'SELECT id FROM ofertas WHERE id = ? FOR UPDATE',
+            [$ofertaId],
+        );
+    }
+}

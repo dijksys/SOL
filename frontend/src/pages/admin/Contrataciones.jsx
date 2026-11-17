@@ -1,0 +1,59 @@
+// SPDX-License-Identifier: MIT
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { listarContratacionesAdmin } from '../../services/contrataciones';
+import { EstadoCarga, FechaHoraCampo, ListaVacia, Mensaje, Tarjeta } from '../../components/UI';
+import { errorApi, fechaCalendario } from '../../utils';
+
+export default function Contrataciones() {
+  const [rango, setRango] = useState({ desde: '', hasta: '' });
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['contrataciones-admin', rango],
+    queryFn: () => listarContratacionesAdmin({ desde: rango.desde || undefined, hasta: rango.hasta || undefined }),
+  });
+
+  return (
+    <Tarjeta
+      titulo="Contrataciones registradas (RF-58)"
+      acciones={
+        <div className="form-fila">
+          <FechaHoraCampo etiqueta="Desde" modo="fecha" value={rango.desde} onChange={(valor) => setRango({ ...rango, desde: valor })} />
+          <FechaHoraCampo etiqueta="Hasta" modo="fecha" value={rango.hasta} onChange={(valor) => setRango({ ...rango, hasta: valor })} />
+        </div>
+      }
+    >
+      {error && <Mensaje>{errorApi(error)}</Mensaje>}
+      {isLoading && <EstadoCarga />}
+      {data && data.length === 0 && <ListaVacia texto="Sin contrataciones registradas en el periodo." />}
+      {data && data.length > 0 && (
+        <div className="tabla-scroll">
+  <table className="tabla-contrataciones">
+            <thead>
+              <tr>
+                <th className="col-fecha">Fecha</th>
+                <th>Empresa</th>
+                <th>Contratado</th>
+                <th>Oferta / cargo</th>
+                <th>Modalidad</th>
+                <th className="col-monto">Remuneración</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((c) => (
+                <tr key={c.id}>
+                  <td className="col-fecha" data-label="Fecha">{fechaCalendario(c.fecha_contratacion)}</td>
+                  <td data-label="Empresa">{c.razon_social}<br /><small style={{ color: 'var(--gris)' }}>RUC {c.ruc}</small></td>
+                  <td data-label="Contratado">{c.nombres} {c.apellidos}<br /><small style={{ color: 'var(--gris)' }}>{c.tipo_documento === 'CE' ? 'Carnet de extranjería' : 'DNI'} {c.dni}</small></td>
+                  <td data-label="Oferta / cargo">{c.puesto}<br /><small style={{ color: 'var(--gris)' }}>{c.cargo}</small></td>
+                  <td data-label="Modalidad">{c.modalidad || '—'}</td>
+                  <td className="col-monto" data-label="Remuneración">{c.remuneracion ? `S/ ${c.remuneracion}` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Tarjeta>
+  );
+}

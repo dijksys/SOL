@@ -1,0 +1,112 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Controllers\Api\Empresa;
+
+use App\Controllers\Api\BaseApiController;
+use App\Exceptions\ApiException;
+use App\Libraries\Descarga;
+use App\Libraries\PerfDiagnostics;
+use App\Repositories\EmpresaRepository;
+use App\Services\PostulacionService;
+
+/**
+ * Bandeja de postulaciones de la empresa (RF-33..RF-40). La empresa solo accede a
+ * postulaciones de SUS ofertas (RT-05). El CV se entrega mediante URL firmada y
+ * solo si la postulación es de la empresa (RT-CV-04/05).
+ */
+class PostulacionesController extends BaseApiController
+{
+    private const ESTADOS = ['pendiente', 'en_revision', 'seleccionado', 'no_seleccionado'];
+
+    private PostulacionService $servicio;
+
+    private int $empresaId;
+
+    public function __construct()
+    {
+        $empresa = (new EmpresaRepository())->porUserId(service('guard')->id());
+        if ($empresa === null) {
+            throw ApiException::noEncontrado('No se encontró la empresa asociada a su cuenta.');
+        }
+
+        $this->empresaId = (int) $empresa['id'];
+        $this->servicio  = new PostulacionService();
+    }
+
+    public function index()
+    {
+        $estado = $this->request->getGet('estado') ?: null;
+        if ($estado !== null && ! in_array($estado, self::ESTADOS, true)) {
+            throw ApiException::validacion('Estado de postulación no válido.');
+        }
+
+        $ofertaId = $this->request->getGet('oferta_id') ?: null;
+        if ($ofertaId !== null && ! ctype_digit((string) $ofertaId)) {
+            throw ApiException::validacion('Oferta no válida.');
+        }
+
+        // Búsqueda por texto (candidato/puesto). El Query Builder parametriza el
+        // término: no se concatena entrada del usuario en SQL.
+        $q = trim((string) ($this->request->getGet('q') ?? ''));
+        if (mb_strlen($q) > 100) {
+            throw ApiException::validacion('El término de búsqueda es demasiado largo.');
+        }
+
+        return $this->ok(
+            $this->servicio->listarDeEmpresa($this->empresaId, $estado, $ofertaId !== null ? (int) $ofertaId : null, null, null, $q !== '' ? $q : null),
+            'Postulaciones recibidas.',
+        );
+    }
+
+    public function show($id)
+    {
+        return $this->ok($this->servicio->detalleDeEmpresa($this->empresaId, (int) $id), 'Detalle de la postulación.');
+    }
+
+    public function estado($id)
+    {
+        $cuerpo = $this->cuerpo();
+        $this->servicio->cambiarEstadoDeEmpresa($this->empresaId, (int) $id, (string) ($cuerpo['estado'] ?? ''));
+
+        return $this->sinContenido('Estado de la postulación actualizado.');
+    }
+
+    public function activacion($id)
+    {
+        $cuerpo = $this->cuerpo();
+        // Booleano estricto: `(bool) "false"` sería true y reactivaría la postulación.
+        $this->servicio->cambiarActivacionDeEmpresa($this->empresaId, (int) $id, $this->booleanoEstricto($cuerpo['activo'] ?? null));
+
+        return $this->sinContenido('Estado de activación actualizado.');
+    }
+
+    public function cv($id)
+    {
+        return $this->ok(['url' => $this->servicio->urlCvAutorizada($this->empresaId, (int) $id)], 'URL de descarga del CV.');
+    }
+
+    /**
+     * Stream del CV cuando el driver es local (RT-CV-04). Con Supabase, la descarga
+     * usa la URL firmada de "cv".
+     */
+    public function cvArchivo($id, $claveCodificada)
+    {
+        $archivo = $this->servicio->archivoCvAutorizado($this->empresaId, (int) $id, (string) $claveCodificada);
+        if ($archivo === null) {
+            throw ApiException::noEncontrado('El archivo no existe.');
+        }
+
+        $contenido = @file_get_contents($archivo['ruta']);
+        if ($contenido === false) {
+            throw ApiException::noEncontrado('El archivo no existe.');
+        }
+
+        return PerfDiagnostics::aplicar($this->response
+            ->setContentType($archivo['mime'], 'UTF-8')
+            ->setHeader('Content-Disposition', Descarga::contentDisposition((string) $archivo['nombre'], 'cv'))
+            ->setHeader('X-Content-Type-Options', 'nosniff')
+            ->setBody($contenido));
+    }
+}

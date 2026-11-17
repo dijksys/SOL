@@ -1,0 +1,156 @@
+/* SPDX-License-Identifier: MIT */
+/* =====================================================================
+   Módulo ADMIN — panel institucional.
+   Solo shell (sidebar/topbar) y piezas específicas del módulo; tokens y
+   componentes base viven en styles.css (fuente única).
+   ===================================================================== */
+
+.app-admin {
+  display: flex;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+  background: var(--fondo);
+  color: var(--ink);
+}
+
+/* ---------------- BARRA LATERAL ----------------
+   La geometría (posición sticky, margen, altura y extremos redondeados) vive
+   en styles.css (fuente única); aquí solo el shell del módulo. */
+
+.pdefin {
+  white-space: pre-wrap;
+}
+
+/* ---------------- CONTENIDO / BARRA SUPERIOR ---------------- */
+.app-admin .main {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-admin .topbar {
+  height: var(--shell-header-h);
+  background: var(--white);
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  /* Mismo margen que el contenido centrado: el título queda alineado con las
+     tarjetas en pantallas anchas. */
+  padding-block: 0;
+  padding-inline: calc(35px + max(0px, (100% - 1600px) / 2));
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  flex: none;
+}
+
+.app-admin .page-title h2 {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.app-admin .page-title p {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.app-admin .content {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  padding: 32px 35px 50px;
+  max-width: 1600px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-inline: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Tablas anchas: el scroll vive en styles.css (regla compartida .tarjeta/.list-card) */
+.app-admin .tarjeta { min-width: 0; }
+
+/* ---------------- KPI (grid; las tarjetas son StatCard global) ---------------- */
+.app-admin .kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 17px;
+  margin-bottom: 24px;
+}
+
+/* ---------------- RESPONSIVE ---------------- */
+@media (max-width: 860px) {
+  /* Panel móvil superpuesto (reglas generales en styles.css). */
+  .app-admin .sidebar { position: fixed; }
+
+  /* Cabecera de página centrada, con subtítulo visible. */
+  .app-admin .topbar {
+    height: auto;
+    min-height: var(--shell-header-h);
+    padding: 14px 15px;
+    justify-content: center;
+    text-align: center;
+  }
+  .app-admin .topbar .page-title { width: 100%; }
+  .app-admin .page-title p { display: block; }
+
+  .app-admin .content { padding: 22px 15px 40px; }
+  .app-admin .filters { margin-bottom: 16px; }
+
+  /* Acciones de cabecera de sección a todo el ancho en móvil. */
+  .app-admin .tarjeta-titulo .btn,
+  .app-admin .list-card-head .btn,
+  .app-admin .form-malla + .btn { width: 100%; }
+}
+
+@media (max-width: 640px) {
+  /* Filtros como rejilla de 2 columnas (mismo criterio que Postulante). */
+  .app-admin .filtros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .app-admin .filtros .btn { width: 100%; }
+  .app-admin .filtros input,
+  .app-admin .filtros .campo { grid-column: 1 / -1; }
+}
+
+@media (max-width: 680px) {
+  .app-admin .page-title h2 { font-size: 20px; }
+  .app-admin .page-title p { font-size: 13px; }
+
+  /* Los KPI conservan densidad: dos columnas; el impar ocupa la fila. */
+  .app-admin .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .app-admin .kpi-grid > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* En móvil el shell vuelve al flujo normal del documento; el drawer y la
+   topbar mantienen su comportamiento existente. */
+@media (max-width: 860px) {
+  .app-admin {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+  .app-admin .content {
+    overflow-x: visible;
+    overflow-y: visible;
+  }
+}
+@media (max-width: 860px) {
+  .app-admin .main {
+    flex: 0 0 auto;
+    min-height: 0;
+  }
+  .app-admin .content {
+    flex: 0 0 auto;
+  }
+}

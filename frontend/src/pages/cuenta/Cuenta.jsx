@@ -1,0 +1,134 @@
+// SPDX-License-Identifier: MIT
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../context/AuthContext';
+import { perfilEmpresa } from '../../services/empresas';
+import { Boton, Campo, Mensaje } from '../../components/UI';
+import PageHeader from '../../components/PageHeader';
+import { useToast } from '../../components/Feedbacks';
+import { ROLES } from '../../constants';
+import { errorApi } from '../../utils';
+import PasswordRequirements from '../../components/PasswordRequirements';
+import { passwordCumple } from '../../utils/password';
+import { STALE } from '../../queryConfig';
+
+export default function Cuenta() {
+  const { usuario, cambiarContrasena } = useAuth();
+  const toast = useToast();
+  const [form, setForm] = useState({ password_actual: '', password: '', password2: '' });
+  const [error, setError] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [intentoPassword, setIntentoPassword] = useState(false);
+
+  const esAdmin = usuario?.rol === ROLES.ADMIN;
+  const esEmpresa = usuario?.rol === ROLES.EMPRESA;
+  const esGoogle = usuario?.proveedor === 'google';
+
+  // Para la empresa, los datos institucionales provienen de su propio perfil
+  // (fuente de verdad), no de users.nombres/apellidos.
+  const { data: empresa } = useQuery({
+    queryKey: ['perfil-empresa'],
+    queryFn: perfilEmpresa,
+    staleTime: STALE.perfil,
+    enabled: esEmpresa,
+  });
+
+  const set = (k) => (e) => { setForm({ ...form, [k]: e.target.value }); setError(null); };
+
+  const guardar = async (e) => {
+    e.preventDefault();
+    setIntentoPassword(true);
+    if (!passwordCumple(form.password) || form.password !== form.password2 || !form.password2) {
+      setError('La contraseña debe cumplir todos los requisitos y ambas contraseñas deben coincidir.');
+      return;
+    }
+    setEnviando(true);
+    setError(null);
+    try {
+      await cambiarContrasena(form);
+      setForm({ password_actual: '', password: '', password2: '' });
+      toast.success('Contraseña actualizada correctamente.');
+    } catch (err) {
+      const det = err?.response?.data?.errors;
+      setError(Array.isArray(det) && det.length ? det.join('. ') : errorApi(err));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  return (
+    <div>
+      {!esAdmin && (
+        <PageHeader
+          titulo="Mi cuenta"
+          descripcion="Datos de acceso y seguridad de tu cuenta en Empleo MDJLO."
+        />
+      )}
+
+      <div className="cuenta-grid">
+        <section className="tarjeta">
+          <div className="tarjeta-titulo">
+            <h2>Información de la cuenta</h2>
+          </div>
+          {esEmpresa ? (
+            <div className="descripcion">
+              <div><b>Razón social</b>{empresa?.razon_social || '—'}</div>
+              <div><b>RUC</b>{empresa?.ruc || usuario?.username || '—'}</div>
+              {empresa?.nombre_comercial && <div><b>Nombre comercial</b>{empresa.nombre_comercial}</div>}
+              <div><b>Representante</b>{empresa?.representante || '—'}</div>
+              <div><b>Correo</b>{empresa?.email || usuario?.email || '—'}</div>
+            </div>
+          ) : (
+            <div className="descripcion">
+              <div><b>Usuario</b>{usuario?.username || '—'}</div>
+              <div><b>Nombre</b>{usuario?.nombres} {usuario?.apellidos}</div>
+              <div><b>Correo</b>{usuario?.email || '—'}</div>
+            </div>
+          )}
+        </section>
+
+        <section className="tarjeta">
+          <div className="tarjeta-titulo">
+            <h2>Seguridad</h2>
+          </div>
+          {esGoogle ? (
+            <>
+              <p className="tarjeta-sub">Tu identidad se gestiona mediante Google.</p>
+              <p className="tarjeta-sub">
+                Iniciaste sesión con «Continuar con Google». Esta cuenta no tiene una contraseña local
+                que cambiar; si necesitas actualizar el acceso, hazlo desde tu cuenta de Google.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="tarjeta-sub">Actualiza la contraseña de acceso al sistema.</p>
+
+              <form onSubmit={guardar}>
+                <Mensaje>{error}</Mensaje>
+                <div className="cuenta-seguridad">
+                  <div className="cuenta-columna cuenta-columna-izquierda">
+                    <div className="cuenta-campo cuenta-campo-actual">
+                      <Campo etiqueta="Contraseña actual" type="password" value={form.password_actual} onChange={set('password_actual')} autoComplete="current-password" />
+                    </div>
+                    <div className="cuenta-campo cuenta-campo-confirmar">
+                      <Campo etiqueta="Confirmar nueva contraseña" type="password" value={form.password2} onChange={set('password2')} autoComplete="new-password" />
+                    </div>
+                    <div className="cuenta-acciones">
+                      <Boton variante="primario" cargando={enviando} type="submit">Actualizar contraseña</Boton>
+                    </div>
+                  </div>
+                  <div className="cuenta-columna cuenta-columna-derecha">
+                    <div className="cuenta-campo cuenta-campo-nueva">
+                      <Campo etiqueta="Nueva contraseña" type="password" value={form.password} onChange={set('password')} autoComplete="new-password" />
+                      <PasswordRequirements password={form.password} confirmacion={form.password2} intento={intentoPassword} />
+                    </div>
+                  </div>
+                </div>
+              </form>
+            </>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

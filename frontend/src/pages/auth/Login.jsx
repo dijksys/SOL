@@ -1,0 +1,211 @@
+// SPDX-License-Identifier: MIT
+import { useRef, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+import { useTema } from '../../context/ThemeContext';
+import { Mensaje } from '../../components/UI';
+import GoogleButton from '../../components/GoogleButton';
+import Turnstile from '../../components/Turnstile';
+import AuthFooter from '../../components/AuthFooter';
+import LogoMunicipal from '../../components/LogoMunicipal';
+import { ROLES, RUTA_BUSQUEDA_EMPLEO, rutaPanel } from '../../constants';
+import { errorApi } from '../../utils';
+
+export default function Login() {
+  const { login, loginGoogle } = useAuth();
+  const { modoEfectivo } = useTema();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [form, setForm] = useState({ username: '', password: '' });
+  const [error, setError] = useState(null);
+  const [enviando, setEnviando] = useState(false);
+  const [verPass, setVerPass] = useState(false);
+  const [turnstileToken, setTurnstileToken] = useState(null);
+  const turnstileRef = useRef(null);
+  const enProceso = useRef(false);
+  // Si el widget está configurado, el token es obligatorio en el cliente; el
+  // backend además lo valida siempre con Siteverify (autoridad real).
+  const turnstileRequerido = Boolean((import.meta.env.VITE_TURNSTILE_SITE_KEY || '').trim());
+
+  const cambiar = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+
+  const destinoPostLogin = (usuario) => {
+    const desde = location.state?.from;
+    // El postulante conserva el destino previo o cae en la bolsa pública.
+    if (usuario.rol === ROLES.POSTULANTE) return desde || RUTA_BUSQUEDA_EMPLEO;
+    return rutaPanel(usuario.rol);
+  };
+
+  const enviar = async (e) => {
+    e.preventDefault();
+    if (enProceso.current) return;
+    if (turnstileRequerido && !turnstileToken) {
+      setError('Completa la verificación de seguridad e inténtalo de nuevo.');
+      return;
+    }
+    enProceso.current = true;
+    setEnviando(true);
+    setError(null);
+    try {
+      const datos = await login(form.username.trim(), form.password, turnstileToken);
+      navigate(destinoPostLogin(datos.usuario), { replace: true });
+    } catch (err) {
+      setError(errorApi(err));
+    } finally {
+      enProceso.current = false;
+      setEnviando(false);
+      // El token de Turnstile es de un solo uso: se descarta y se pide uno nuevo.
+      setTurnstileToken(null);
+      turnstileRef.current?.reset();
+    }
+  };
+
+  // Google solo opera para postulantes. Si la cuenta (nueva o existente) tiene
+  // el perfil incompleto, se lleva al postulante a completar los datos que
+  // Google no aporta; ya completado, ingresa directo a la bolsa de empleo.
+  const conGoogle = async (idToken) => {
+    if (enProceso.current) return;
+    if (turnstileRequerido && !turnstileToken) {
+      setError('Completa la verificación de seguridad e inténtalo de nuevo.');
+      return;
+    }
+    enProceso.current = true;
+    setEnviando(true);
+    setError(null);
+    try {
+      const datos = await loginGoogle(idToken, turnstileToken);
+      const destino = datos.usuario?.rol === ROLES.POSTULANTE && datos.perfil_completo === false
+        ? '/postulante/perfil'
+        : destinoPostLogin(datos.usuario);
+      navigate(destino, { replace: true });
+    } catch (err) {
+      setError(errorApi(err));
+    } finally {
+      enProceso.current = false;
+      setEnviando(false);
+      setTurnstileToken(null);
+      turnstileRef.current?.reset();
+    }
+  };
+
+  return (
+    <div className="login-institucional login-institucional--footer-rounded">
+      <main className="login-main">
+        {/* Bloque de marca */}
+        <div className="login-marca">
+          <LogoMunicipal className="login-logo" />
+          <h1 className="login-municipio-nombre">MUNICIPALIDAD DISTRITAL DE JOSÉ LEONARDO ORTIZ</h1>
+          <p className="login-sistema">Unidad Funcional del Empleo (UFE) · Sistema de Ofertas Laborales (JLO)</p>
+        </div>
+
+        {/* Formulario de acceso */}
+        <div className="login-formulario">
+          <h2 className="login-formulario-titulo">Inicio de sesión</h2>
+
+          <Mensaje>{error}</Mensaje>
+
+          <form onSubmit={enviar}>
+            <div className="login-campo">
+              <label className="login-campo-label" htmlFor="username">Usuario, RUC o DNI</label>
+              <div className="login-campo-input-wrapper">
+                <svg className="login-campo-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                <input
+                  id="username"
+                  className="login-campo-input"
+                  type="text"
+                  name="username"
+                  placeholder="Usuario, RUC o DNI"
+                  value={form.username}
+                  onChange={cambiar}
+                  autoComplete="username"
+                  required
+
+                  maxLength={150}
+                />
+              </div>
+              <p className="login-campo-ayuda">Empresas: RUC. Postulantes: DNI. Administración: usuario.</p>
+            </div>
+
+            <div className="login-campo">
+              <label className="login-campo-label" htmlFor="password">Contraseña</label>
+              <div className="login-campo-input-wrapper">
+                <svg className="login-campo-icono" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+                <input
+                  id="password"
+                  className="login-campo-input"
+                  type={verPass ? 'text' : 'password'}
+                  name="password"
+                  placeholder="Ingrese su contraseña"
+                  value={form.password}
+                  onChange={cambiar}
+                  autoComplete="current-password"
+                  required
+                  maxLength={50}
+                />
+                <button
+                  type="button"
+                  className="login-campo-ojo"
+                  onClick={() => setVerPass(!verPass)}
+                  tabIndex={-1}
+                  aria-label={verPass ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                >
+                  {verPass ? (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94" />
+                      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+                      <line x1="1" y1="1" x2="23" y2="23" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                      <circle cx="12" cy="12" r="3" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              className={`login-btn-submit ${enviando ? 'login-btn-loading' : ''}`}
+              disabled={enviando}
+            >
+              {enviando ? (
+                <span className="login-btn-spinner" />
+              ) : null}
+              {enviando ? 'Iniciando sesión…' : 'Iniciar sesión'}
+            </button>
+          </form>
+
+          <div className="login-divisor">O</div>
+
+          <GoogleButton modo="login" onCredencial={conGoogle} />
+
+          <Turnstile
+            ref={turnstileRef}
+            accion="auth"
+            tema={modoEfectivo}
+            onToken={setTurnstileToken}
+            onExpire={() => setTurnstileToken(null)}
+          />
+
+          <div className="login-registro-link">
+            ¿Eres ciudadano? <Link to="/registro">Regístrate aquí</Link>
+          </div>
+          <div className="login-registro-link">
+            ¿Representas a una empresa? <Link to="/registro-empresa">Solicita su afiliación</Link>
+          </div>
+
+        </div>
+      </main>
+
+      <AuthFooter rounded />
+    </div>
+  );
+}

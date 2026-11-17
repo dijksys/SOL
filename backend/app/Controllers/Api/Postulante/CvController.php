@@ -1,0 +1,114 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Controllers\Api\Postulante;
+
+use App\Libraries\PerfDiagnostics;
+
+use App\Controllers\Api\BaseApiController;
+use App\Exceptions\ApiException;
+use App\Libraries\Descarga;
+use App\Models\PostulanteModel;
+use App\Services\CvService;
+
+/**
+ * Carga y consulta del CV (RF-21, RT-CV-01..RT-CV-09). El archivo se almacena en
+ * Supabase Storage; MySQL solo guarda metadatos. La descarga exige autorización
+ * (aquí: el propio postulante; las empresas accederán vía su postulación).
+ */
+class CvController extends BaseApiController
+{
+    private CvService $cv;
+
+    private int $postulanteId;
+
+    private int $usuarioId;
+
+    public function __construct()
+    {
+        $this->usuarioId = (int) service('guard')->id();
+
+        $postulante = (new PostulanteModel())->porUserId($this->usuarioId);
+        if ($postulante === null) {
+            throw ApiException::noEncontrado('No se encontró el perfil de postulante.');
+        }
+
+        $this->postulanteId = (int) $postulante->id;
+        $this->cv           = new CvService();
+    }
+
+    public function index()
+    {
+        return $this->ok([
+            'vigente'   => $this->cv->activo($this->postulanteId),
+            'historial' => array_map(static fn ($v) => [
+                'id' => $v->id, 'version' => $v->version, 'nombre_original' => $v->nombre_original,
+                'tamano' => $v->tamano, 'activo' => $v->activo,
+                'fecha' => $v->updated_at?->format('Y-m-d H:i:s'),
+            ], $this->cv->historial($this->postulanteId)),
+        ], 'CV del postulante.');
+    }
+
+    public function upload()
+    {
+        $archivo = $this->request->getFile('cv');
+        if ($archivo === null || ! $archivo->isValid()) {
+            return PerfDiagnostics::aplicar($this->response
+                ->setStatusCode(422)
+                ->setContentType('application/json', 'UTF-8')
+                ->setBody(json_encode([
+                    'success' => false,
+                    'message' => 'Debe enviar un archivo en el campo "cv".',
+                    'errors'  => [],
+                ], JSON_UNESCAPED_UNICODE)));
+        }
+
+        $yaTenia = $this->cv->activo($this->postulanteId) !== null;
+        $cv = $this->cv->subir(
+            $this->postulanteId,
+            $archivo,
+            $this->usuarioId,
+            $this->request->getIPAddress(),
+        );
+
+        return $this->ok([
+            'id' => $cv->id, 'version' => $cv->version, 'nombre_original' => $cv->nombre_original,
+            'tamano' => $cv->tamano,
+        ], $yaTenia ? 'CV actualizado correctamente.' : 'CV cargado correctamente.', 201);
+    }
+
+    /**
+     * Genera URL temporal/firmada del CV vigente para el dueño (RT-CV-05).
+     */
+    public function descargar()
+    {
+        return $this->ok(['url' => $this->cv->urlDescarga($this->postulanteId)], 'URL de descarga generada.');
+    }
+
+    /**
+     * Stream del archivo cuando el driver es local. Autoriza solo al propietario
+     * (RT-CV-04). Con Supabase Storage la descarga usa la URL firmada de "descargar".
+     */
+    public function archivo($claveCodificada)
+    {
+        $archivo = $this->cv->archivoLocalDelDuenno($this->postulanteId, (string) $claveCodificada);
+
+        if ($archivo === null) {
+            throw ApiException::noEncontrado('El archivo no existe.');
+        }
+
+        $contenido = @file_get_contents($archivo['ruta']);
+        if ($contenido === false) {
+            throw ApiException::noEncontrado('El archivo no existe.');
+        }
+
+        // El nombre proviene del cliente: se sanea para evitar inyección de
+        // cabeceras (CRLF), rutas y nombres ambiguos en Content-Disposition.
+        return PerfDiagnostics::aplicar($this->response
+            ->setContentType($archivo['mime'], 'UTF-8')
+            ->setHeader('Content-Disposition', Descarga::contentDisposition((string) $archivo['nombre'], 'cv'))
+            ->setHeader('X-Content-Type-Options', 'nosniff')
+            ->setBody($contenido));
+    }
+}

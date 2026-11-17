@@ -1,0 +1,313 @@
+// SPDX-License-Identifier: MIT
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { cambiarEstadoEmpresa, crearEmpresa, listarEmpresas, resetPasswordEmpresa } from '../../services/empresas';
+import { EstadoCarga, Boton, Campo, Estado, ListaVacia, Mensaje, Selecto, Tarjeta } from '../../components/UI';
+import ProfileImage from '../../components/ProfileImage';
+import EmpresaDetalleModal from '../../components/EmpresaDetalleModal';
+import { useToast, useDialogo } from '../../components/Feedbacks';
+import { Check, Eye, KeyRound, Power } from 'lucide-react';
+import { errorApi, fecha, fechaCalendario, soloDigitos, urlArchivo } from '../../utils';
+import { useAccion } from '../../hooks/useAccion';
+import { usePermisosMunicipales } from '../../hooks/usePermisosMunicipales';
+import PasswordRequirements from '../../components/PasswordRequirements';
+import { passwordCumple } from '../../utils/password';
+
+const estadosEmpresa = { activo: 'activo', inactivo: 'inactivo' };
+
+export default function Empresas() {
+  const { puede } = usePermisosMunicipales();
+  const puedeGestionar = puede('empresas');
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const { pedirTexto } = useDialogo();
+  const [filtros, setFiltros] = useState({ estado: '', q: '' });
+  const [mostrarNuevo, setMostrarNuevo] = useState(false);
+  const [nota, setNota] = useState(null);
+  const [seleccionada, setSeleccionada] = useState(null);
+  const { ejecutar, enviando, error, setError } = useAccion(async (fn) => fn());
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['empresas', filtros],
+    queryFn: () => listarEmpresas(Object.fromEntries(Object.entries(filtros).filter(([, v]) => v))),
+  });
+
+  const refrescar = () => {
+    queryClient.invalidateQueries({ queryKey: ['empresas'] });
+    queryClient.invalidateQueries({ queryKey: ['empresa-admin-detalle'] });
+  };
+
+  const alternar = async (e) => {
+    await ejecutar(() => cambiarEstadoEmpresa(e.id, e.estado === 'activo' ? 'inactivo' : 'activo'));
+    setError(null);
+    refrescar();
+  };
+
+  const resetPassword = async (e) => {
+    const password = await pedirTexto({
+      titulo: 'Restablecer contraseña',
+      mensaje: `Empresa RUC ${e.ruc}`,
+      etiqueta: 'Nueva contraseña (mínimo 8 caracteres)',
+      secreto: true,
+      politicaPassword: true,
+      min: 8,
+      textoConfirmar: 'Restablecer',
+      variante: 'peligro',
+    });
+    if (!password) return;
+    try {
+      await ejecutar(() => resetPasswordEmpresa(e.id, password));
+      setError(null);
+      toast.success('Contraseña restablecida. Entréguela de forma segura a la empresa.');
+      refrescar();
+    } catch (err) {
+      setError(errorApi(err));
+    }
+  };
+
+  return (
+    <Tarjeta
+      titulo="Empresas afiliadas"
+      acciones={puedeGestionar ? (
+        <Boton variante="acento" onClick={() => setMostrarNuevo((v) => !v)}>
+          {mostrarNuevo ? 'Cancelar' : 'Registrar empresa'}
+        </Boton>
+      ) : null}
+    >
+      {nota && <Mensaje tipo="exito">{nota}</Mensaje>}
+
+      {puedeGestionar && mostrarNuevo && (
+        <NuevaEmpresa
+          alCrear={(datos) => {
+            setMostrarNuevo(false);
+            setNota(`Empresa registrada. Credenciales de acceso — Usuario (RUC): ${datos.ruc}; la contraseña la entrega la Municipalidad.`);
+            refrescar();
+          }}
+        />
+      )}
+
+      <div className="form-fila filtros">
+        <input placeholder="Buscar por RUC, razón social o nombre comercial…" value={filtros.q} onChange={(e) => setFiltros({ ...filtros, q: e.target.value })} />
+        <Selecto etiqueta="" aria-label="Filtrar por estado" value={filtros.estado} onChange={(valor) => setFiltros({ ...filtros, estado: valor })}>
+          <option value="">Todos los estados</option>
+          <option value="activo">Activas</option>
+          <option value="inactivo">Inactivas</option>
+        </Selecto>
+      </div>
+
+      {error && <Mensaje>{error}</Mensaje>}
+      {isLoading && <EstadoCarga />}
+      {data && data.data.length === 0 && <ListaVacia />}
+
+      {data && data.data.length > 0 && (
+        <div className="tabla-scroll">
+  <table className="tabla-empresas">
+            <thead>
+              <tr>
+                <th className="col-identificador">RUC</th>
+                <th>Razón social</th>
+                <th>Representante</th>
+                <th className="col-correo">Correo</th>
+                <th>Estado</th>
+                <th className="col-fecha">Registro</th>
+                <th className="col-acciones">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.data.map((e) => (
+                <tr key={e.id}>
+                  <td className="col-identificador" data-label="RUC">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <ProfileImage src={urlArchivo(e.logo_url)} nombre={e.razon_social} variant="company" size={34} />
+                      <strong>{e.ruc}</strong>
+                    </div>
+                  </td>
+                  <td data-label="Razón social">{e.razon_social}<br /><small style={{ color: 'var(--gris)' }}>{e.nombre_comercial}</small></td>
+                  <td data-label="Representante">{e.representante}</td>
+                  <td className="col-correo" data-label="Correo">{e.email}</td>
+                  <td data-label="Estado">
+                    <Estado valor={e.estado} diccionario={estadosEmpresa} />
+                    {e.evaluacion_presencial ? <div><small style={{ color: 'var(--verde)' }}>Evaluada presencialmente</small></div> : null}
+                  </td>
+                  <td className="col-fecha" data-label="Registro">{fecha(e.created_at)}<br /><small style={{ color: 'var(--gris)' }}>{e.antiguedad}</small></td>
+                  <td className="col-acciones">
+                    <div className="acciones">
+                      <Boton variante="gris" onClick={() => setSeleccionada(e)}>
+                        <Eye size={16} aria-hidden="true" />Ver
+                      </Boton>
+                      {puedeGestionar && (
+                        <>
+                          <Boton variante={e.estado === 'activo' ? 'peligro' : 'exito'} onClick={() => alternar(e)} disabled={enviando}>
+                            {e.estado === 'activo' ? 'Desactivar' : 'Activar'}
+                          </Boton>
+                          <Boton variante="gris" onClick={() => resetPassword(e)} disabled={enviando}>Cambiar clave</Boton>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p style={{ color: 'var(--gris)', fontSize: '0.85rem' }}>
+        {data?.total ?? 0} empresa(s). La Municipalidad puede registrar empresas tras la evaluación presencial; las
+        empresas también pueden solicitar su afiliación desde el portal (ver la pestaña "Solicitudes").
+      </p>
+
+      <DetalleEmpresa
+        empresa={seleccionada}
+        puedeGestionar={puedeGestionar}
+        alCerrar={() => setSeleccionada(null)}
+        alCambio={(mensaje) => { toast.success(mensaje); refrescar(); }}
+      />
+    </Tarjeta>
+  );
+}
+
+function DetalleEmpresa({ empresa, puedeGestionar, alCerrar, alCambio }) {
+  const [error, setError] = useState(null);
+  const toast = useToast();
+  const { pedirTexto } = useDialogo();
+  const { ejecutar, enviando } = useAccion(async (fn) => fn());
+
+  if (!empresa) return null;
+
+  const alternar = async () => {
+    try {
+      await ejecutar(() => cambiarEstadoEmpresa(empresa.id, empresa.estado === 'activo' ? 'inactivo' : 'activo'));
+      setError(null);
+      alCambio(empresa.estado === 'activo' ? 'Empresa desactivada.' : 'Empresa activada.');
+    } catch (e) {
+      setError(errorApi(e));
+    }
+  };
+
+  const resetPassword = async () => {
+    const password = await pedirTexto({
+      titulo: 'Restablecer contraseña',
+      mensaje: `Empresa RUC ${empresa.ruc}`,
+      etiqueta: 'Nueva contraseña (mínimo 8 caracteres)',
+      secreto: true,
+      politicaPassword: true,
+      min: 8,
+      textoConfirmar: 'Restablecer',
+      variante: 'peligro',
+    });
+    if (!password) return;
+    try {
+      await ejecutar(() => resetPasswordEmpresa(empresa.id, password));
+      setError(null);
+      toast.success('Contraseña restablecida. Entréguela de forma segura a la empresa.');
+    } catch (e) {
+      setError(errorApi(e));
+    }
+  };
+
+  const secciones = [
+    {
+      titulo: 'Identificación empresarial',
+      items: [
+        { etiqueta: 'RUC', valor: empresa.ruc },
+        { etiqueta: 'Nombre comercial', valor: empresa.nombre_comercial },
+        { etiqueta: 'Representante', valor: empresa.representante },
+      ],
+    },
+    {
+      titulo: 'Contacto y ubicación',
+      items: [
+        { etiqueta: 'Correo', valor: empresa.email },
+        { etiqueta: 'Teléfono', valor: empresa.telefono },
+        { etiqueta: 'Dirección', valor: empresa.direccion },
+      ],
+    },
+    {
+      titulo: 'Cuenta y registro',
+      items: [
+        { etiqueta: 'Usuario', valor: empresa.username },
+        { etiqueta: 'Estado del usuario', valor: empresa.user_estado },
+        { etiqueta: 'Registro', valor: fechaCalendario(empresa.created_at) },
+        { etiqueta: 'Antigüedad en la plataforma', valor: empresa.antiguedad },
+      ],
+    },
+  ];
+
+  const insignias = (
+    <>
+      <Estado valor={empresa.estado} diccionario={estadosEmpresa} />
+      {empresa.evaluacion_presencial ? (
+        <span className="badge badge-green"><Check size={13} aria-hidden="true" style={{ marginRight: 4 }} />Evaluada presencialmente</span>
+      ) : null}
+    </>
+  );
+
+  return (
+    <EmpresaDetalleModal
+      empresa={empresa}
+      abierto
+      alCerrar={alCerrar}
+      insignias={insignias}
+      error={error}
+      secciones={secciones}
+      acciones={puedeGestionar ? (
+        <>
+          <Boton variante={empresa.estado === 'activo' ? 'peligro' : 'exito'} cargando={enviando} onClick={alternar}>
+            <Power size={16} aria-hidden="true" />{empresa.estado === 'activo' ? 'Desactivar' : 'Activar'}
+          </Boton>
+          <Boton variante="gris" cargando={enviando} onClick={resetPassword}>
+            <KeyRound size={16} aria-hidden="true" />Cambiar clave
+          </Boton>
+        </>
+      ) : null}
+    />
+  );
+}
+
+const VACIO = { ruc: '', razon_social: '', nombre_comercial: '', direccion: '', telefono: '', email: '', representante: '', evaluacion_presencial: true, password: '', info_adicional: '' };
+
+function NuevaEmpresa({ alCrear }) {
+  const [form, setForm] = useState(VACIO);
+  const [error, setError] = useState(null);
+  const [intentoPassword, setIntentoPassword] = useState(false);
+  const { ejecutar, enviando } = useAccion(() => crearEmpresa(form));
+
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+
+  const enviar = async () => {
+    setIntentoPassword(true);
+    if (!passwordCumple(form.password)) {
+      setError('La contraseña no cumple los requisitos de seguridad.');
+      return;
+    }
+    try {
+      const creada = await ejecutar();
+      alCrear({ ruc: form.ruc, id: creada?.id });
+    } catch (e) {
+      const det = e?.response?.data?.errors;
+      setError(Array.isArray(det) && det.length ? det.join('. ') : errorApi(e));
+    }
+  };
+
+  return (
+    <section style={{ border: '1px solid var(--borde)', borderRadius: 'var(--radius-lg)', padding: '1rem', margin: '1rem 0' }}>
+      <h3>Registro municipal de empresa (post evaluación presencial)</h3>
+      <Mensaje>{error}</Mensaje>
+      <div className="form-malla">
+        <Campo etiqueta="RUC (será el usuario)" maxLength={11} value={form.ruc} onChange={(e) => setForm({ ...form, ruc: soloDigitos(e.target.value) })} />
+        <Campo etiqueta="Razón social" value={form.razon_social} onChange={set('razon_social')} />
+        <Campo etiqueta="Nombre comercial" value={form.nombre_comercial} onChange={set('nombre_comercial')} />
+        <Campo etiqueta="Representante" value={form.representante} onChange={set('representante')} />
+        <Campo etiqueta="Correo" type="email" value={form.email} onChange={set('email')} />
+        <Campo etiqueta="Teléfono" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: soloDigitos(e.target.value) })} inputMode="numeric" maxLength={11} />
+        <Campo etiqueta="Dirección" value={form.direccion} onChange={set('direccion')} />
+        <div><Campo etiqueta="Contraseña inicial" type="password" value={form.password} onChange={(e) => { set('password')(e); setError(null); }} /><PasswordRequirements password={form.password} intento={intentoPassword} /></div>
+      </div>
+      <label className="form-fila" style={{ margin: '0.4rem 0' }}>
+        <input type="checkbox" checked={form.evaluacion_presencial} onChange={set('evaluacion_presencial')} style={{ width: 'auto' }} />
+        <span>Empresa evaluada presencialmente y habilitada para operar</span>
+      </label>
+      <Boton variante="primario" cargando={enviando} onClick={enviar}>Registrar empresa</Boton>
+    </section>
+  );
+}

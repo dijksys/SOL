@@ -1,0 +1,173 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Repositories;
+
+use App\Models\OfertaHabilidadModel;
+use CodeIgniter\Database\BaseConnection;
+
+/**
+ * Consultas de ofertas laborales con sus relaciones (empresa, categoría,
+ * habilidades). Soportan la bandeja de la empresa y la supervisión municipal.
+ */
+class OfertaRepository
+{
+    private BaseConnection $db;
+
+    public function __construct(?BaseConnection $db = null)
+    {
+        $this->db = $db ?? db_connect();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function porEmpresa(int $empresaId, ?string $desde = null, ?string $hasta = null): array
+    {
+        $builder = $this->base()->where('ofertas.empresa_id', $empresaId);
+        if ($desde !== null) {
+            $builder->where('ofertas.created_at >=', $desde . ' 00:00:00');
+        }
+        if ($hasta !== null) {
+            $builder->where('ofertas.created_at <=', $hasta . ' 23:59:59');
+        }
+
+        return $builder->orderBy('ofertas.updated_at', 'DESC')
+            ->get()
+            ->getResultArray();
+    }
+
+    /**
+     * Bandeja municipal: pendientes de revisión primero; dentro de cada estado,
+     * las más recientes (RF-24/25).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function paraAdmin(?string $estado = null): array
+    {
+        $builder = $this->base()
+            ->orderBy("FIELD(ofertas.estado, 'pendiente', 'rechazada', 'borrador', 'publicada', 'vencida', 'cerrada')", '', false)
+            ->orderBy('ofertas.created_at', 'DESC');
+
+        $hoy = date('Y-m-d');
+
+        if ($estado === 'vencida') {
+            // Estado efectivo (no persistido): publicada con cierre anterior a hoy.
+            $builder->where('ofertas.estado', 'publicada')
+                ->where('ofertas.fecha_cierre IS NOT NULL')
+                ->where('ofertas.fecha_cierre <', $hoy);
+        } elseif ($estado === 'publicada') {
+            // La pestaña "Publicadas" es disponibilidad efectiva, no solo el
+            // valor histórico del ENUM.
+            $builder->where('ofertas.estado', 'publicada')
+                ->groupStart()
+                    ->where('ofertas.fecha_cierre IS NULL')
+                    ->orWhere('ofertas.fecha_cierre >=', $hoy)
+                ->groupEnd();
+        } elseif ($estado !== null) {
+            $builder->where('ofertas.estado', $estado);
+        }
+
+        return $builder->get()->getResultArray();
+    }
+
+    /**
+     * Ofertas publicadas y vigentes para los postulantes (RF-27/RF-28).
+     * Criterios: categoría, ubicación, formación y experiencia.
+     *
+     * @param array<string, mixed> $filtros
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function publicadas(array $filtros): array
+    {
+        $builder = $this->base()
+            ->where('ofertas.estado', 'publicada')
+            ->groupStart()
+                ->where('ofertas.fecha_cierre IS NULL')
+                ->orWhere('ofertas.fecha_cierre >=', date('Y-m-d'))
+            ->groupEnd()
+            ->orderBy('ofertas.fecha_publicacion', 'DESC')
+            ->orderBy('ofertas.created_at', 'DESC');
+
+        if (! empty($filtros['categoria_id'])) {
+            $builder->where('ofertas.categoria_id', (int) $filtros['categoria_id']);
+        }
+        if (! empty($filtros['ubicacion'])) {
+            $builder->like('ofertas.ubicacion', $filtros['ubicacion']);
+        }
+        if (! empty($filtros['formacion'])) {
+            $builder->like('ofertas.formacion_requerida', $filtros['formacion']);
+        }
+        if (! empty($filtros['experiencia'])) {
+            $builder->like('ofertas.experiencia_requerida', $filtros['experiencia']);
+        }
+        if (! empty($filtros['tipo_empleo'])) {
+            $builder->where('ofertas.tipo_empleo', $filtros['tipo_empleo']);
+        }
+        if (! empty($filtros['empresa'])) {
+            $builder->like('empresas.razon_social', $filtros['empresa']);
+        }
+        if (isset($filtros['salario_min']) && $filtros['salario_min'] !== '') {
+            $builder->where('ofertas.remuneracion >=', (float) $filtros['salario_min']);
+        }
+        // Búsqueda por palabras clave sobre los campos relevantes de la oferta
+        // (puesto, descripción, funciones, requisitos, categoría y empresa).
+        if (! empty($filtros['q'])) {
+            $termino = (string) $filtros['q'];
+            $builder->groupStart()
+                ->like('ofertas.puesto', $termino)
+                ->orLike('ofertas.descripcion', $termino)
+                ->orLike('ofertas.funciones', $termino)
+                ->orLike('ofertas.requisitos', $termino)
+                ->orLike('categorias.nombre', $termino)
+                ->orLike('empresas.razon_social', $termino)
+            ->groupEnd();
+        }
+
+        return $builder->limit(200)->get()->getResultArray();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function detalle(int $id): ?array
+    {
+        // El conteo va como subconsulta escalar: antes era una consulta extra
+        // por cada detalle. Las habilidades siguen en una consulta propia.
+        $fila = $this->base()
+            ->select(
+                '(SELECT COUNT(*) FROM postulaciones WHERE postulaciones.oferta_id = ofertas.id AND postulaciones.activo = 1) AS cantidad_postulaciones',
+                false,
+            )
+            ->where('ofertas.id', $id)
+            ->get()
+            ->getRowArray();
+        if ($fila === null) {
+            return null;
+        }
+
+        $fila['habilidades'] = (new OfertaHabilidadModel())->deOferta($id);
+        $fila['cantidad_postulaciones'] = (int) $fila['cantidad_postulaciones'];
+
+        return $fila;
+    }
+
+    private function base(): \CodeIgniter\Database\BaseBuilder
+    {
+        return $this->db->table('ofertas')
+            ->select('ofertas.*, categorias.nombre AS categoria_nombre,
+                      empresas.ruc, empresas.razon_social,
+                      empresas.id AS empresa_id, empresas.nombre_comercial AS empresa_nombre_comercial,
+                      empresas.direccion AS empresa_direccion, empresas.created_at AS empresa_created_at,
+                      empresas.logo_key AS empresa_logo_key,
+                      empresas.website_url AS empresa_website_url,
+                      empresas.instagram_url AS empresa_instagram_url,
+                      empresas.facebook_url AS empresa_facebook_url,
+                      empresas.tiktok_url AS empresa_tiktok_url,
+                      empresas.x_url AS empresa_x_url')
+            ->join('categorias', 'categorias.id = ofertas.categoria_id', 'LEFT')
+            ->join('empresas', 'empresas.id = ofertas.empresa_id', 'LEFT');
+    }
+}

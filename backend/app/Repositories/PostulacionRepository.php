@@ -1,0 +1,151 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Repositories;
+
+use CodeIgniter\Database\BaseConnection;
+
+/**
+ * Postulaciones de un postulante (RF-30..RF-32): bandeja con oferta y empresa.
+ */
+class PostulacionRepository
+{
+    private BaseConnection $db;
+
+    public function __construct(?BaseConnection $db = null)
+    {
+        $this->db = $db ?? db_connect();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function dePostulante(int $postulanteId): array
+    {
+        return $this->db->table('postulaciones p')
+            ->select('p.id, p.estado, p.activo, p.retirada_postulante, p.fecha_postulacion, p.oferta_id,
+                      of.puesto, of.ubicacion, of.remuneracion, of.fecha_cierre,
+                      emp.id AS empresa_id, emp.razon_social, emp.nombre_comercial, emp.ruc,
+                      emp.direccion, emp.info_adicional, emp.logo_key, emp.created_at AS empresa_created_at,
+                      emp.website_url, emp.instagram_url, emp.facebook_url, emp.tiktok_url, emp.x_url,
+                      cat.nombre AS categoria_nombre')
+            ->join('ofertas of', 'of.id = p.oferta_id')
+            ->join('empresas emp', 'emp.id = p.empresa_id')
+            ->join('categorias cat', 'cat.id = of.categoria_id', 'LEFT')
+            ->where('p.postulante_id', $postulanteId)
+            ->orderBy('p.fecha_postulacion', 'DESC')
+            ->get()
+            ->getResultArray();
+    }
+
+    /**
+     * Indica si el postulante ya tiene una postulación ACTIVA a la oferta.
+     * La restricción de unicidad de la base de datos sigue siendo la última
+     * defensa ante dos solicitudes simultáneas.
+     */
+    public function tienePostulacionActiva(int $postulanteId, int $ofertaId): bool
+    {
+        return $this->db->table('postulaciones')
+            ->where('postulante_id', $postulanteId)
+            ->where('oferta_id', $ofertaId)
+            ->where('activo', 1)
+            ->countAllResults() > 0;
+    }
+
+    /**
+     * Selección formal del postulante dentro de una empresa (RN-18).
+     *
+     * Se consulta por estado `seleccionado` sin filtrar por `activo`: la
+     * selección es un hito terminal y no debe poder eludirse desactivando la
+     * postulación desde la bandeja de la empresa.
+     */
+    public function seleccionadoEnEmpresa(int $postulanteId, int $empresaId): bool
+    {
+        return $this->db->table('postulaciones')
+            ->where('postulante_id', $postulanteId)
+            ->where('empresa_id', $empresaId)
+            ->where('estado', 'seleccionado')
+            ->countAllResults() > 0;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function deEmpresa(int $empresaId, ?string $estado = null, ?int $ofertaId = null, ?string $desde = null, ?string $hasta = null, ?string $q = null): array
+    {
+        $builder = $this->db->table('postulaciones p')
+            ->select('p.id, p.estado, p.activo, p.retirada_postulante, p.fecha_postulacion, p.oferta_id,
+                      of.puesto, of.ubicacion, of.estado AS oferta_estado, of.fecha_cierre,
+                      po.id AS postulante_id, po.tipo_documento, po.dni, po.nombres, po.apellidos, po.telefono, po.foto_key')
+            ->join('ofertas of', 'of.id = p.oferta_id')
+            ->join('postulantes po', 'po.id = p.postulante_id')
+            ->where('p.empresa_id', $empresaId)
+            // RF-34/RN-16: pendientes primero y, dentro de cada estado, más recientes arriba.
+            ->orderBy('FIELD(p.estado, "pendiente", "en_revision", "seleccionado", "no_seleccionado")', '', false)
+            ->orderBy('p.fecha_postulacion', 'DESC');
+
+        if ($estado !== null) {
+            $builder->where('p.estado', $estado);
+        }
+
+        if ($ofertaId !== null) {
+            $builder->where('p.oferta_id', $ofertaId);
+        }
+
+        if ($desde !== null) {
+            $builder->where('p.fecha_postulacion >=', $desde . ' 00:00:00');
+        }
+        if ($hasta !== null) {
+            $builder->where('p.fecha_postulacion <=', $hasta . ' 23:59:59');
+        }
+
+        // Búsqueda por texto (candidato o puesto) combinable con los demás filtros.
+        if ($q !== null && trim($q) !== '') {
+            $termino = trim($q);
+            $builder->groupStart()
+                ->like('po.nombres', $termino)
+                ->orLike('po.apellidos', $termino)
+                ->orLike('po.dni', $termino)
+                ->orLike('of.puesto', $termino)
+            ->groupEnd();
+        }
+
+        return $builder->limit(300)->get()->getResultArray();
+    }
+
+    /**
+     * Postulación perteneciente a la empresa (RT-05). Devuelve además el id del
+     * postulante para autorizar la consulta de su CV (RT-CV-04).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function deEmpresaPorId(int $empresaId, int $id): ?array
+    {
+        $fila = $this->db->table('postulaciones p')
+            ->select('p.*, of.puesto, of.ubicacion, of.fecha_cierre, of.remuneracion, of.estado AS oferta_estado,
+                      po.tipo_documento, po.dni')
+            ->join('ofertas of', 'of.id = p.oferta_id')
+            ->join('postulantes po', 'po.id = p.postulante_id')
+            ->where('p.id', $id)
+            ->where('p.empresa_id', $empresaId)
+            ->get()
+            ->getRowArray();
+
+        return $fila ?: null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function delPostulante(int $postulanteId, int $id): ?array
+    {
+        $fila = $this->db->table('postulaciones')
+            ->where('id', $id)
+            ->where('postulante_id', $postulanteId)
+            ->get()
+            ->getRowArray();
+
+        return $fila ?: null;
+    }
+}

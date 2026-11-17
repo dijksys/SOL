@@ -1,0 +1,169 @@
+# Matriz de cumplimiento — Sistema de Empleo MDJLO
+
+> Sincronizada con SOL **1.5.4** (2026-11-07). Refleja el comportamiento
+> implementado en `backend/`, `frontend/`, migraciones y pruebas.
+
+Estado por código de requerimiento y dónde está implementado (endpoint de la API /
+pantalla del frontend / regla en la base de datos). Estados: ✔ implementado,
+⬤ parcial (funcionalidad básica; ampliación prevista), ✘ pendiente.
+
+## Requerimientos funcionales (RF)
+
+| Código | Estado | Ubicación |
+|---|---|---|
+| RF-01 Login | ✔ | `POST /api/auth/login`: empresa con RUC, postulante con DNI, admin con usuario/correo · login |
+| RF-02 Auth en backend CI4 vs MariaDB | ✔ | `Services/AuthService`, `UserModel` |
+| RF-03 MariaDB fuente de verdad | ✔ | JWT solo transporta id; rol/estado se recargan de BD (`JwtAuthFilter`) |
+| RF-04 Rol desde BD, no elegible | ✔ | columna `users.rol`; no editable por frontend |
+| RF-05 Control de acceso | ✔ | filtros `jwt` + `rol:...` + `permiso:...` por ruta |
+| RF-06 Cuentas activo/inactivo | ✔ | login bloqueado; admin activa/desactiva (`UsuariosController`, `EmpresasController`) |
+| RF-07 Administración de usuarios | ✔ | `api/admin/usuarios*` · Usuarios (ADMIN); perfiles `admin/moderador/solo_lectura`; no autodesactivación ni degradación del último admin |
+| RF-08 Empresas se registran por solicitud pública + aprobación municipal | ✔ | `POST /api/solicitudes-empresa` · `api/admin/solicitudes-empresa*` (auto-registro con verificación de RUC) |
+| RF-09 Evaluación presencial | ⬤ | asumida en la aprobación de la solicitud (`evaluacion_presencial=1`) |
+| RF-10 Perfil de empresa | ✔ | CRUD admin + auto-edición de la empresa (`empresa/perfil`) |
+| RF-11 Usuario empresarial creado al aprobar la solicitud | ✔ | dentro de `SolicitudEmpresaService::aprobar` |
+| RF-12 RUC = usuario | ✔ | username generado desde el RUC; login exclusivo de empresa por RUC (el correo no es login alternativo) |
+| RF-13 Contraseña definida por la empresa al activar | ✔ | enlace de un solo uso `activar-cuenta/{token}` (`SolicitudEmpresaService`) |
+| RF-14 Hash seguro | ✔ | `password_hash(PASSWORD_DEFAULT)` (RN-06) |
+| RF-15 Notificación por correo + enlace de activación | ✔ | `EmailService` (SMTP); el admin puede copiar/regenerar el enlace |
+| RF-16 Activar/desactivar empresa | ✔ | `PUT /api/admin/empresas/{id}/estado` sincroniza `users.estado` |
+| RF-17 Conservación de información | ✔ | flags de estado; sin borrado físico |
+| RF-18 Registro de postulantes (manual DNI + Google) | ✔ | `POST /api/registro/postulante` y `POST /api/auth/google` · Registro |
+| RF-19/20 Perfil laboral + actualización | ✔ | datos personales/contacto + CV; **para postular solo se exige contacto completo + CV vigente** (las secciones de formación/experiencia/habilidades/cursos se retiraron del producto) |
+| RF-21 CV cargar/consultar | ✔ | `POST/GET /api/postulante/cv*` · "Mi perfil y CV"; sin cuota mensual; rate limiting configurable por usuario/IP y una carga simultánea por postulante; `429` con `Retry-After` |
+| RF-22 Registro de ofertas | ✔ | `api/empresa/ofertas*` · Ofertas (empresa); campos de negocio obligatorios, ubicación del catálogo compartido y cierre no anterior a hoy |
+| RF-23 Estados de oferta | ✔ | pendiente → publicada / rechazada → cerrada; `borrador` solo heredado. `vencida` es un estado efectivo derivado de `publicada` + `fecha_cierre`, distinto del cierre manual |
+| RF-24 La empresa envía a revisión; no publica por sí misma | ✔ | `PUT /api/empresa/ofertas/{id}/enviar-revision`; el `POST` nace `pendiente` |
+| RF-25/26 Aprobación y rechazo municipal (+ cierre) | ✔ | `PUT /api/admin/ofertas/{id}/aprobar|rechazar|cerrar` (solo `rol:admin`) |
+| RF-27/28 Consulta + búsqueda públicas (sin sesión) | ✔ | `GET /api/ofertas` con filtros (categoría, ubicación, formación, experiencia) · "Buscar empleo". El filtro "Puesto o empresa" (`q`) se retiró el 2026-09-15 |
+| RF-29 Detalle de oferta público | ✔ | `GET /api/ofertas/{id}` (incluye "ya postulé" si hay sesión) |
+| RF-30 Registro individual de postulación | ✔ | `POST /api/postulante/postulaciones` (empresa denormalizada) |
+| RF-31 Postulación única activa | ✔ | columna generada única `postulacion_unica` (RN-14) + chequeo en servicio |
+| RF-32 Registro automático en bandeja empresa | ✔ | misma tabla `postulaciones`; bandeja por `empresa_id` |
+| RF-33 Bandeja de postulaciones | ✔ | `GET /api/empresa/postulaciones` · Postulaciones (empresa) |
+| RF-34 Pendientes primero, recientes dentro de estado | ✔ | orden `FIELD(estado…)` + `fecha_postulacion DESC` |
+| RF-35 Detalle del postulante (datos de contacto, CV, oferta) | ✔ | `GET /api/empresa/postulaciones/{id}` |
+| RF-36 Gestión de estado | ✔ | `PUT .../estado` con transiciones validadas |
+| RF-37/38 Activar/desactivar sin eliminar | ✔ | `PUT .../activacion` solo para `estado=seleccionado`; `409` en pendiente/en revisión/no seleccionado; el retiro voluntario bloquea activar y desactivar; sin borrado físico |
+| RF-39 Historial de estados | ✔ | tabla `postulacion_historial` (cada cambio, usuario y fecha) |
+| RF-40 La empresa selecciona | ✔ | el admin solo supervisa; selección por la empresa (RN-18). Un postulante seleccionado no puede postular a otra oferta de la misma empresa |
+| RF-41/42/43 Atenciones con tipos y seguimiento | ✘ retirado (2026-09) | módulo de atenciones eliminado de la API y el frontend; la tabla `atenciones` queda sin uso |
+| RF-44/45/46/47 Ferias, eventos, talleres, capacitaciones | ✔ | `api/admin/actividades*` · Actividades (admin); listado público filtra por estado y `fecha_fin`, y distingue estado efectivo |
+| RF-48 Sección de difusión de oportunidades | ✔ | `GET /api/oportunidades` · "Ferias y oportunidades" (postulante); solo activas, con programación completa, `fecha_fin > ahora` y estado efectivo no terminal; la fecha de inicio no impide publicar |
+| RF-49 Empleos Perú | ✔ | fuente `empleos_peru` en `oportunidades` |
+| RF-50 MYPE locales | ✔ | fuente `mype_local`; sin vínculo a empresas registradas |
+| RF-51 Fuente identificada | ✔ | columna `fuente` por oportunidad |
+| Programación y ciclo de vida de oportunidades | ✔ | `oportunidades.fecha_inicio/fecha_fin/modalidad/estado`; `estado_efectivo` por fecha en America/Lima; `PUT /api/admin/oportunidades/{id}/estado` |
+| Disponibilidad pública de oportunidades | ✔ | regla central `estadoPublicacion`/`es_visible_publicamente`; inicio futuro visible como `programado`; fin exacto cierra; finalizado/cancelado nunca visibles |
+| Inmutabilidad de oportunidad finalizada | ✔ | `puede_modificarse=false`; edición, activación y transición responden `409` `OPPORTUNITY_ALREADY_FINALIZED`; permanece consultable en admin |
+| Retiro de fecha editorial y empresa_id | ✔ | migraciones posteriores con archivo de `fecha_publicacion` y aborto seguro si `empresa_id` tiene valores no nulos |
+| Validación estricta de escrituras | ✔ | `Validador` distingue tipos, IDs y booleanos; contacto opcional conserva si se omite; fechas de situación y motivo laboral; rate limiting de CV y CV activo único |
+| RF-52 Dashboard municipal | ✔ | `GET /api/admin/dashboard` · Dashboard (admin) |
+| RF-53 Empresas registradas/activas | ✔ | indicador en dashboard |
+| RF-54 Ofertas por estado | ✔ | ídem |
+| RF-55 Postulaciones por estado | ✔ | ídem |
+| RF-56 Personas atendidas | ✘ retirado (2026-09) | indicadores de atenciones eliminados del dashboard y reportes |
+| RF-57 Seleccionados y empresas con procesos | ✔ | indicadores `seleccionados`, `empresas_con_procesos` |
+| RF-58 Contrataciones | ✔ | `api/empresa/contrataciones*`, supervisión admin |
+| RF-59 Tiempo postulación→contacto/selección | ✔ | promedio en días desde `postulacion_historial` |
+| RF-60 Reportes por periodo | ✔ | `GET /api/admin/reportes?desde=&hasta=`; export CSV/Excel/PDF en admin y Excel/PDF en empresa |
+| RF-61 Registro de actividades | ✔ | tabla `auditoria` (login, altas, activaciones, aprobaciones, resets…) |
+| RF-62 Historial conservado | ✔ | flags `activo`/estado + tablas históricas |
+| RF-63 Trazabilidad de acciones administrativas | ✔ | `auditoria.user_id` + fecha; historial de postulación |
+
+## Reglas de negocio (RN)
+
+| Código | Estado | Mecanismo |
+|---|---|---|
+| RN-01…RN-06 | ✔ | alta de empresas por solicitud aprobada (`SolicitudEmpresaService`) o por admin (legado), RUC = login de empresa, hash seguro |
+| RN-07/08 | ✔ | rol leído de BD; no editable desde frontend |
+| RN-09 | ✔ | `RoleFilter` en cada endpoint protegido |
+| RN-10 | ✔ | `JwtAuthFilter` valida `estado=activo` |
+| RN-11 | ✔ | sincronización `empresas.estado`↔`users.estado` |
+| RN-12 | ✔ | desactivación conserva registros |
+| RN-13/14/15 | ✔ | registro por postulación, único activo, bandeja por empresa |
+| RN-16 | ✔ | pendientes primero en bandeja |
+| RN-17 | ✔ | activar/desactivar solo candidatos seleccionados, sin borrado físico; el retiro voluntario es irreversible desde la empresa |
+| RN-18 | ✔ | selección/contratación solo por la empresa |
+| RN-19 | ✔ | solo las ofertas `publicada` reciben postulaciones; la aprobación municipal es obligatoria y editar una publicada la devuelve a revisión |
+| RN-20 | ✔ | historiales y auditoría |
+| RN-21 | ✔ | un administrador no puede desactivar su propia cuenta (`UsuarioService::cambiarEstado` → 403); la UI no ofrece la acción |
+
+## Arquitectura y código (RT)
+
+| Código | Estado | Ubicación |
+|---|---|---|
+| RT-01/02/03 Independencia y responsabilidades | ✔ | `backend/` (CI4) y `frontend/` (React) separados; solo API REST |
+| RT-04 Frontend solo presentación | ✔ | sin reglas de negocio ni credenciales |
+| RT-05 Backend valida propiedad/permisos | ✔ | p. ej. ofertas/postulaciones/CV de la propia empresa |
+| RT-06 Solo backend habla con MariaDB | ✔ | |
+| RT-07 Endpoints REST | ✔ | grupo `/api` en `Routes.php` |
+| RT-08 Respuestas uniformes | ✔ | `{success,message,data,errors}` vía `BaseApiController`/`ApiExceptionHandler` |
+| RT-09 Capas SOLID | ✔ | `Controllers → Services → Repositories → Models/Entities` |
+| RT-10 Early returns | ✔ | filtros, auth y validaciones |
+| RT-11/12/13 Comentarios y reglas de negocio | ✔ | comentarios solo para invariantes (RN-14, RT-CV…) |
+| RT-14…17 Convenciones | ✔ | nombres descriptivos en español, sin duplicación |
+| RT-18…22 Seguridad | ✔ | JWT en backend, autorización por rol, hash, revalidación de datos |
+
+## CV y almacenamiento (RT-CV)
+
+| Código | Estado | Ubicación |
+|---|---|---|
+| RT-CV-01/02 | ✔ | archivo en Supabase Storage; MariaDB guarda metadatos (`cvs`) |
+| RT-CV-03 | ✔ | cada carga crea versión y desactiva la anterior (`CvService`) |
+| RT-CV-04 | ✔ | empresa ve CV solo de postulaciones propias (`PostulacionService`) |
+| RT-CV-05 | ✔ | URL firmada generada por el backend (driver local = ruta interna autorizada) |
+| RT-CV-06/07 | ✔ | validación de extensión, MIME, firma binaria, estructura y tamaño (máx. 5 MB); `object_key` generada por el sistema |
+| RT-CV-08 | ✔ | historial de versiones conservado |
+| RT-CV-09 | ✔ | sin cuota mensual; rate limiting configurable por usuario/IP (`rate_limit_contadores`, `CvRateLimiter`) y una carga simultánea por postulante (`GET_LOCK`); `429` con `Retry-After` |
+
+## Endurecimiento de seguridad y errores (2026-09)
+
+| Aspecto | Estado | Ubicación |
+|---|---|---|
+| `password_hash` nunca en respuestas | ✔ | `UsuarioRepository::base()` con columnas explícitas; `GET /api/admin/usuarios` sin hash (RT-20) |
+| Rate limiting de autenticación | ✔ | token bucket CI4: login ráfaga 5 (1/60 s) por IP+identificador normalizado, solo fallos (reset en éxito); refresh/Google/registro ráfaga 10 (1/30 s) por IP (`ThrottleFilter`, `AuthService`) |
+| Rate limiting de subida de CV | ✔ | ventanas fijas en MariaDB: por defecto 5/10 min y 20/hora por usuario, 10/10 min y 40/hora por IP (`CvRateLimiter`, `cvRateLimit.*`); una carga simultánea por postulante (`GET_LOCK`); `429` con `Retry-After` |
+| Validación de teléfono 9 u 11 dígitos | ✔ | regla `telefono` en `Validador` (backend) + filtrado a dígitos y validación en el frontend |
+| Errores saneados | ✔ | `ApiExceptionHandler` responde JSON uniforme; `500` genérico con log interno; `429` con `Retry-After` |
+| Metadescripciones por ruta | ✔ | `frontend/src/components/SeoMeta.jsx` + `index.html` |
+| Conexión MariaDB | ✔ | gestión nativa de CI4 (una conexión por request); sin pool personalizado |
+| Booleanos de activación estrictos | ✔ | `BaseApiController::booleanoEstricto`; `"false"` desactiva (antes el cast lo activaba) |
+| Fechas calendáricas | ✔ | reglas `fecha`/`fecha_hora` en `Validador` (rechaza `2026-13-01`) |
+| Enlaces de usuario solo `http(s)` | ✔ | `OportunidadService::validar` + `utils.esEnlaceSeguro` |
+| Rate limit en auto-registro público | ✔ | `throttle:5,300` en `verificar-ruc`/`solicitudes-empresa`; `10,300` en `activar-cuenta` |
+| Cabeceras de seguridad | ✔ | filtro `secureheaders` global (nosniff, X-Frame-Options, Referrer-Policy) |
+| `jwt.secret` obligatorio | ✔ | `JwtService` falla explícitamente sin secreto |
+| Editar oportunidad no la republica | ✔ | `OportunidadService::crear` fija `activo=1`; editar lo preserva |
+
+## Saneamiento funcional y técnico (2026-09-15)
+
+| Aspecto | Estado | Ubicación |
+|---|---|---|
+| Bloqueo de autodesactivación del admin | ✔ | `UsuarioService::cambiarEstado` (403) + UI de Usuarios sin la acción sobre la cuenta propia |
+| Filtro "Puesto o empresa" eliminado | ✔ | sin `q` en `GET /api/ofertas` y `GET /api/postulante/ofertas`; UI/OpenAPI/tests actualizados |
+| Historial de postulación con `users.id` real | ✔ | `PostulacionService::postular` + `PostulanteRepository::usuarioIdDe` |
+| Contratación solo sobre postulación activa | ✔ | `ContratacionService::registrar` exige `activo=1` |
+| `total` de empresas respeta `q` | ✔ | `EmpresaRepository::contar` |
+| Transacciones en escrituras multi-tabla | ✔ | `PostulanteService::actualizarBasico`, `UsuarioService::cambiarEstado`, `EmpresaService::cambiarEstado` |
+| Tope de paginación admin | ✔ | `limite` 1–200 y `offset` >= 0 en usuarios, empresas y solicitudes |
+| Dependencias dev sin uso retiradas | ✔ | `fakerphp/faker`, `mikey179/vfsstream` |
+
+## Pendientes / recomendados
+
+- **Configuración opcional en .env**: SMTP (`email.*`) para las notificaciones de aprobación/rechazo, token de APIsPERU (`apisperu.token`) para verificar DNI y RUC y Google (`google.clientId` + `VITE_GOOGLE_CLIENT_ID`).
+- **WhatsApp de notificaciones** (aprobación/rechazo) todavía no integrado; hoy solo correo. Opcional.
+- **Supabase Storage real**: conectar credenciales (driver `supabase`) y re-verificar
+  subida + URL firmada; el entorno local usa driver `local` por defecto.
+- Roles operativos adicionales para oficinas descentralizadas: la matriz actual
+  implementa `admin`, `moderador` y `solo_lectura`; cualquier rol nuevo requiere
+  decisión funcional y no debe inferirse de la documentación.
+- Integración de oficinas descentralizadas (matriz de la Resolución).
+- Difusión hacia empresas (ver ferias/oportunidades desde la cuenta empresa).
+- **Tablas en desuso** (`formacion_academica`, `experiencia_laboral`, `habilidades`,
+  `cursos_certificaciones`, `atenciones`): no se eliminan hasta confirmar que ningún
+  entorno tiene datos reales; el borrado se haría con una migración nueva.
+- **Hallazgos menores de la auditoría** (`backend/docs/auditoria-backend.md`):
+  dueño único de `users.estado`/`empresas.estado`, auditoría ampliada, N+1 en listados
+  e índices de consulta quedan como recomendaciones; la zona horaria de aplicación y
+  la validación calendárica ya están implementadas y cubiertas por pruebas.

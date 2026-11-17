@@ -1,0 +1,292 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Services;
+
+use App\Exceptions\ApiException;
+use App\Libraries\Identidad;
+use App\Models\PostulanteModel;
+use App\Models\UserModel;
+use App\Repositories\PostulanteRepository;
+use App\Validation\Validador;
+use CodeIgniter\HTTP\Files\UploadedFile;
+
+/**
+ * Perfil laboral del postulante (RF-19/RF-20): datos básicos y de contacto.
+ * El requisito para postular es tener contacto completo y CV vigente.
+ */
+class PostulanteService
+{
+    private PostulanteRepository $repository;
+
+    private PostulanteModel $postulantes;
+
+    private UserModel $users;
+
+    private StorageService $storage;
+
+    private ImageService $images;
+
+    private IdentidadService $identidad;
+
+    public function __construct(
+        ?PostulanteRepository $repository = null,
+        ?PostulanteModel $postulantes = null,
+        ?UserModel $users = null,
+        ?StorageService $storage = null,
+        ?ImageService $images = null,
+        ?IdentidadService $identidad = null,
+    ) {
+        $this->repository  = $repository ?? new PostulanteRepository();
+        $this->postulantes = $postulantes ?? model(PostulanteModel::class);
+        $this->users       = $users ?? model(UserModel::class);
+        $this->storage     = $storage ?? new StorageService();
+        $this->images      = $images ?? new ImageService();
+        $this->identidad   = $identidad ?? new IdentidadService();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function perfil(int $usuarioId): array
+    {
+        $postulante = $this->postulantes->porUserId($usuarioId);
+        if ($postulante === null) {
+            throw ApiException::noEncontrado('No se encontró el perfil de postulante.');
+        }
+
+        // perfilCompleto ya incluye foto_url (proxy público); aquí solo se añade
+        // la completitud para postular (RF-19 ajustado).
+        $perfil = $this->repository->perfilCompleto((int) $postulante->id);
+
+        // Completitud para postular (RF-19 ajustado): se expone para guiar al usuario.
+        $perfil['completitud'] = $this->repository->completitud((int) $postulante->id);
+
+        // Actividad laboral (antes en /postulante/dashboard): se consolida aquí para
+        // que "Mi perfil y CV" sea el centro único. Reutiliza DashboardService, sin
+        // duplicar consultas ni forzar una segunda petición desde el frontend.
+        $perfil['actividad'] = (new DashboardService())->postulante($usuarioId);
+
+        return $perfil;
+    }
+
+    /**
+     * Sube o reemplaza la foto de perfil del postulante autenticado. La imagen se
+     * normaliza a 800x800 con recorte centrado (cover), sin deformar.
+     */
+    public function subirFoto(int $usuarioId, UploadedFile $foto): void
+    {
+        $postulante = $this->postulantes->porUserId($usuarioId);
+        if ($postulante === null) {
+            throw ApiException::noEncontrado('No se encontró el perfil de postulante.');
+        }
+
+        $contenido   = $this->images->leerSubida($foto);
+        $normalizada = $this->images->normalizar($contenido, 'cover', 'jpeg');
+
+        $objectKey = 'postulantes/foto/' . $postulante->id . '/' . bin2hex(random_bytes(8)) . '.' . $normalizada['extension'];
+        $this->storage->almacenarContenido($objectKey, $normalizada['bytes'], $normalizada['mime']);
+        $this->storage->recordarImagen($objectKey, $normalizada['bytes']);
+
+        $anterior = $postulante->foto_key;
+        $this->postulantes->update((int) $postulante->id, ['foto_key' => $objectKey]);
+
+        if ($anterior && $anterior !== $objectKey) {
+            $this->storage->eliminar($anterior);
+        }
+    }
+
+    public function eliminarFoto(int $usuarioId): void
+    {
+        $postulante = $this->postulantes->porUserId($usuarioId);
+        if ($postulante === null) {
+            throw ApiException::noEncontrado('No se encontró el perfil de postulante.');
+        }
+
+        if (! empty($postulante->foto_key)) {
+            $this->storage->eliminar($postulante->foto_key);
+        }
+        $this->postulantes->update((int) $postulante->id, ['foto_key' => null]);
+    }
+
+    /**
+     * Contenido binario de la foto de un postulante por su id (proxy de lectura).
+     * Nunca expone la clave de almacenamiento ni otros datos.
+     *
+     * @return array{mime: string, contenido: string}|null
+     */
+    public function fotoContenido(int $postulanteId): ?array
+    {
+        $postulante = $this->postulantes->find($postulanteId);
+        if ($postulante === null || empty($postulante->foto_key)) {
+            return null;
+        }
+
+        $contenido = $this->storage->obtenerImagen($postulante->foto_key);
+        if ($contenido === null) {
+            return null;
+        }
+
+        $mime = match (strtolower(pathinfo($postulante->foto_key, PATHINFO_EXTENSION))) {
+            'png'   => 'image/png',
+            'webp'  => 'image/webp',
+            default => 'image/jpeg',
+        };
+
+        return ['mime' => $mime, 'contenido' => $contenido];
+    }
+
+    /**
+     * @param array<string, mixed> $datos
+     */
+    public function actualizarBasico(int $usuarioId, array $datos): void
+    {
+        $postulante = $this->postulantes->porUserId($usuarioId);
+        if ($postulante === null) {
+            throw ApiException::noEncontrado('No se encontró el perfil de postulante.');
+        }
+
+        $usuario = $this->users->find($usuarioId);
+        if ($usuario === null) {
+            throw ApiException::noEncontrado('El usuario no existe.');
+        }
+
+        $proporcionaEmail    = array_key_exists('email', $datos);
+        $proporcionaTelefono = array_key_exists('telefono', $datos);
+        $email    = Identidad::email(Validador::textoActualizacion($datos, 'email', $usuario->email, 'correo electrónico'));
+        $telefono = Identidad::telefono(Validador::textoActualizacion($datos, 'telefono', $usuario->telefono, 'teléfono'));
+
+        $tipoDocumento = $datos['tipo_documento'] ?? '';
+        if (! is_string($tipoDocumento)) {
+            $mensaje = 'El tipo de documento no es válido.';
+            throw ApiException::validacion($mensaje, [$mensaje], ['tipo_documento' => $mensaje]);
+        }
+        $numeroDocumento = $datos['numero_documento'] ?? $datos['dni'] ?? '';
+        if (! is_string($numeroDocumento)) {
+            $mensaje = 'El número de documento no es válido.';
+            throw ApiException::validacion($mensaje, [$mensaje], ['numero_documento' => $mensaje]);
+        }
+
+        $datos['email']            = $email;
+        $datos['telefono']         = $telefono;
+        $datos['tipo_documento']   = strtoupper(trim($tipoDocumento));
+        $datos['numero_documento'] = trim($numeroDocumento);
+
+        $reglas = [
+            'nombres'    => ['required', 'max:100'],
+            'apellidos'  => ['required', 'max:100'],
+            'direccion'  => ['max:255'],
+            'distrito'   => ['max:100'],
+            'fecha_nacimiento' => ['fecha'],
+            // Información laboral del perfil/CV (RF-19).
+            'ocupacion'   => ['max:150'],
+            'experiencia' => ['max:5000'],
+            'estudios'    => ['max:5000'],
+            'tipo_documento' => ['enum:DNI,CE'],
+            'numero_documento' => ['max:20'],
+            'dni'        => ['max:20'],
+        ];
+        if ($proporcionaEmail) {
+            $reglas['email'] = ['email', 'max:150'];
+        }
+        if ($proporcionaTelefono) {
+            $reglas['telefono'] = ['telefono'];
+        }
+        Validador::validar($datos, $reglas);
+
+        $fechaNacimiento = trim((string) ($datos['fecha_nacimiento'] ?? ''));
+        if ($fechaNacimiento !== '' && ! Validador::esFechaNoFutura($fechaNacimiento)) {
+            $mensaje = 'La fecha de nacimiento no puede ser futura.';
+            throw ApiException::validacion($mensaje, [$mensaje], ['fecha_nacimiento' => $mensaje]);
+        }
+
+        $proveedor = $usuario->proveedor ?? 'local';
+
+        // `dni` es la columna histórica que guarda el número; el tipo documental
+        // distingue DNI de carnet de extranjería sin duplicar el número.
+        $numero = (string) $datos['numero_documento'];
+        $tipo   = (string) $datos['tipo_documento'];
+        $documento = [];
+
+        if ($numero !== '') {
+            if ($tipo === '') {
+                throw ApiException::validacion('Seleccione el tipo de documento.', ['Seleccione el tipo de documento.']);
+            }
+            if ($tipo === 'DNI') {
+                $numero = Identidad::dni($numero);
+                if (preg_match('/^\d{8}$/', $numero) !== 1) {
+                    throw ApiException::validacion('El DNI debe tener 8 dígitos.', ['El DNI debe tener 8 dígitos.']);
+                }
+            } else {
+                $numero = (string) preg_replace('/\D+/', '', $numero);
+                if (preg_match('/^\d{9,12}$/', $numero) !== 1) {
+                    throw ApiException::validacion('El carnet de extranjería debe tener entre 9 y 12 dígitos.', ['El carnet de extranjería debe tener entre 9 y 12 dígitos.']);
+                }
+            }
+
+            $tipoActual = $postulante->tipo_documento ?: ($postulante->dni ? 'DNI' : null);
+            if ($postulante->dni !== null && $proveedor !== 'google'
+                && ((string) $postulante->dni !== $numero || $tipoActual !== $tipo)) {
+                throw ApiException::conflicto('El documento de identidad no puede modificarse en esta cuenta.');
+            }
+
+            $this->identidad->exigirLibre('dni', $numero, $usuarioId);
+
+            $documento = ['tipo_documento' => $tipo, 'dni' => $numero];
+        }
+
+        if ($proporcionaEmail && Identidad::email($usuario->email) !== $email) {
+            $this->identidad->exigirLibre('email', $email, $usuarioId);
+        }
+        if ($proporcionaTelefono && Identidad::telefono($usuario->telefono) !== $telefono) {
+            $this->identidad->exigirLibre('telefono', $telefono, $usuarioId);
+        }
+
+        // Perfil y cuenta se actualizan juntos: un fallo parcial dejaría datos
+        // de contacto divergentes entre `postulantes` y `users`.
+        try {
+            $this->postulantes->db->transStart();
+
+            // Las reservas se actualizan antes de escribir las nuevas columnas
+            // para que el servicio compare contra los valores actuales.
+            $this->identidad->actualizarContacto($usuarioId, $datos['email'], $datos['telefono']);
+            if ($numero !== '') {
+                $this->identidad->actualizarDocumento($usuarioId, $numero);
+            }
+
+            $this->postulantes->update((int) $postulante->id, array_merge([
+                'nombres'          => $datos['nombres'],
+                'apellidos'        => $datos['apellidos'],
+                'direccion'        => $datos['direccion'] ?? null,
+                'distrito'         => $datos['distrito'] ?? null,
+                'telefono'         => $datos['telefono'],
+                'fecha_nacimiento' => $datos['fecha_nacimiento'] ?? null,
+                'ocupacion'        => $datos['ocupacion'] ?? null,
+                'experiencia'      => $datos['experiencia'] ?? null,
+                'estudios'         => $datos['estudios'] ?? null,
+            ], $documento));
+            $this->users->update($usuarioId, [
+                'nombres'   => $datos['nombres'],
+                'apellidos' => $datos['apellidos'],
+                'email'     => $datos['email'],
+                'telefono'  => $datos['telefono'],
+            ]);
+
+            $this->postulantes->db->transComplete();
+
+            if (! $this->postulantes->db->transStatus()) {
+                throw ApiException::conflicto('No se pudo actualizar el perfil. Intente nuevamente.');
+            }
+        } catch (ApiException $e) {
+            $this->postulantes->db->transRollback();
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->postulantes->db->transRollback();
+            if (IdentidadService::esDuplicado($e)) {
+                throw ApiException::conflicto('El DNI, correo o teléfono ya está asociado a otra cuenta. No se aplicó el cambio.');
+            }
+            throw $e;
+        }
+    }
+}

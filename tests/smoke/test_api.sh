@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Prueba de humo de la API (iteración 1). Requiere MariaDB migrado y seed.
+set -u
+cd "$(dirname "$0")/../../backend" || exit 1
+B=http://127.0.0.1:8080
+LOG=/tmp/opencode/spark.log
+
+env 'storage.driver=local' php spark serve --host 127.0.0.1 > "$LOG" 2>&1 &
+SRV=$!
+trap 'kill $SRV 2>/dev/null' EXIT
+for i in $(seq 1 20); do curl -s -o /dev/null "$B/" && break; sleep 0.5; done
+
+paso() { printf '\n== %s ==\n' "$1"; }
+
+js() { python3 -c 'import sys,json;d=json.load(sys.stdin);assert d.get("success") is True, "FAIL respuesta success=false";print(d)' ; }
+tok() { python3 -c 'import sys,json;d=json.load(sys.stdin);assert d.get("success") is True and isinstance(d.get("data"),dict) and d["data"].get("access_token"), "FAIL login sin access_token";print(d["data"]["access_token"])'; }
+safe_session() { python3 -c 'import sys,json;d=json.load(sys.stdin);u=(d.get("data") or {}).get("usuario") or {};assert d.get("success") is True and isinstance(d.get("data"),dict) and d["data"].get("access_token") and u.get("username"), "FAIL sesión sin access_token/usuario";print("success:",d.get("success"),"usuario:",u.get("username"),"rol:",u.get("rol"))' ; }
+safe_error() { python3 -c 'import sys,json;d=json.load(sys.stdin);assert d.get("success") is False and d.get("message"), "FAIL respuesta de error inesperada";print("error esperado:", d.get("message"))' ; }
+
+token_dni() {
+    php -r 'require "vendor/autoload.php"; echo Firebase\JWT\JWT::encode(["tipo"=>"verificacion_dni","dni"=>$argv[1],"nombres"=>$argv[2],"apellidos"=>$argv[3],"iat"=>time(),"exp"=>time()+600], getenv("jwt.secret"), "HS256");' "$1" "$2" "$3"
+}
+
+paso "0. health check público"
+curl -s -o /dev/null -w "GET /health http:%{http_code} (200)\n" "$B/health"
+curl -s "$B/health" | python3 -c 'import sys,json;d=json.load(sys.stdin);print("health status:",d["data"]["status"])'
+
+paso "1. login admin"
+R=$(curl -s -X POST "$B/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"admin","password":"Admin123!"}')
+echo 'login admin: OK'
+AT=$(echo "$R" | tok)
+
+paso "2. me (admin)"
+curl -s "$B/api/auth/me" -H "Authorization: Bearer $AT" | js | head -c 300; echo
+
+paso "3. dashboard admin"
+curl -s "$B/api/admin/dashboard?desde=2026-01-01&hasta=2026-12-31" -H "Authorization: Bearer $AT" | js | head -c 600; echo
+
+paso "4. listar usuarios"
+curl -s "$B/api/admin/usuarios" -H "Authorization: Bearer $AT" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print("total:",d["total"]);[print(" -",u["username"],u["rol"],u["estado"]) for u in d["data"]]'
+
+paso "5. listar empresas"
+curl -s "$B/api/admin/empresas" -H "Authorization: Bearer $AT" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print("total:",d["total"]);[print(" -",e["ruc"],e["razon_social"],e["estado"]) for e in d["data"]]'
+
+paso "6. crear empresa (RUC 20609999999, sin evaluacion => inactiva)"
+C=$(curl -s -X POST "$B/api/admin/empresas" -H "Authorization: Bearer $AT" -H 'Content-Type: application/json' -d '{"ruc":"20609999999","razon_social":"Comercial Prueba SAC","email":"p@prueba.pe","password":"Prueba123!"}')
+echo "$C" | js | head -c 300; echo
+
+paso "6b. login empresa recién creada (debe fallar: inactiva, RN-10)"
+curl -s -X POST "$B/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"20609999999","password":"Prueba123!"}' | safe_error
+
+paso "6c. duplicado RUC => 409"
+curl -s -o /dev/null -w "%{http_code}\n" -X POST "$B/api/admin/empresas" -H "Authorization: Bearer $AT" -H 'Content-Type: application/json' -d '{"ruc":"20609999999","razon_social":"Otra SAC","password":"Prueba123!"}'
+
+paso "7. login empresa seed"
+RE=$(curl -s -X POST "$B/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"20601234567","password":"Empresa123!"}')
+AT_E=$(echo "$RE" | tok)
+curl -s "$B/api/empresa/perfil" -H "Authorization: Bearer $AT_E" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["ruc"],d["razon_social"],d["estado"])'
+curl -s "$B/api/empresa/dashboard" -H "Authorization: Bearer $AT_E" | js | head -c 500; echo
+
+paso "8. empresa NO puede ver admin/usuarios (403)"
+curl -s -o /dev/null -w "%{http_code}\n" "$B/api/admin/usuarios" -H "Authorization: Bearer $AT_E"
+
+paso "9. login postulante seed"
+RP=$(curl -s -X POST "$B/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"12345678","password":"Postu123!"}')
+AT_P=$(echo "$RP" | tok)
+curl -s "$B/api/postulante/perfil" -H "Authorization: Bearer $AT_P" | python3 -c 'import sys,json;d=json.load(sys.stdin)["data"];print(d["dni"], d["nombres"], "cv:", d["cv"])'
+curl -s "$B/api/postulante/dashboard" -H "Authorization: Bearer $AT_P" | js | head -c 300; echo
+
+paso "10. registro nuevo postulante DNI 87654321"
+TOKEN_DNI=$(token_dni 87654321 "Luis" "Perez Diaz")
+curl -s -X POST "$B/api/registro/postulante" -H 'Content-Type: application/json' -d "{\"dni\":\"87654321\",\"nombres\":\"Luis\",\"apellidos\":\"Perez Diaz\",\"email\":\"luis@mail.com\",\"telefono\":\"999888776\",\"password\":\"Clave12345!\",\"password2\":\"Clave12345!\",\"terms_accepted\":true,\"dni_token\":\"$TOKEN_DNI\"}" | safe_session
+
+paso "10b. login nuevo postulante"
+curl -s -X POST "$B/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"87654321","password":"Clave12345!"}' | safe_session
+
+paso "11. subir CV (local) + descargar"
+CU=$(curl -s -X POST "$B/api/postulante/cv" -H "Authorization: Bearer $AT_P" -F "cv=@/var/www/sol/tests/fixtures/cv.pdf;type=application/pdf;filename=mi-cv.pdf")
+echo "$CU" | js | head -c 300; echo
+D=$(curl -s "$B/api/postulante/cv/descargar" -H "Authorization: Bearer $AT_P")
+echo "$D" | js | head -c 300; echo
+URL=$(echo "$D" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["url"])')
+CLAVE=$(echo "$URL" | sed 's#.*/cv/archivo/##')
+curl -s -o /tmp/opencode/descarga.pdf -w "archivo http:%{http_code} bytes:%{size_download}\n" "$B/api/postulante/cv/archivo/$CLAVE" -H "Authorization: Bearer $AT_P"
+head -c 5 /tmp/opencode/descarga.pdf | grep -q "%PDF" && echo "CV descargado con firma PDF" || { echo "FAIL CV descargado sin firma PDF"; exit 1; }
+# empresa NO debe poder descargar CV ajeno
+curl -s -o /dev/null -w "empresa descarga cv ajeno http:%{http_code}\n" "$B/api/postulante/cv/archivo/$CLAVE" -H "Authorization: Bearer $AT_E"
+
+paso "12. refresh token"
+RT=$(echo "$R" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d.get("success") is True and d.get("data",{}).get("refresh_token"), "FAIL login sin refresh_token";print(d["data"]["refresh_token"])')
+curl -s -X POST "$B/api/auth/refresh" -H 'Content-Type: application/json' -d "{\"refresh_token\":\"$RT\"}" | safe_session
+
+paso "13. crear usuario municipal y desactivar"
+curl -s -o /dev/null -w "crear admin http:%{http_code}\n" -X POST "$B/api/admin/usuarios" -H "Authorization: Bearer $AT" -H 'Content-Type: application/json' -d '{"username":"municipal1","nombres":"Rosa","apellidos":"Flores","email":"municipal1@example.test","password":"Segura123!","perfil_municipal":"admin"}'
+curl -s -o /dev/null -w "login municipal http:%{http_code}\n" -X POST "$B/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"municipal1","password":"Segura123!"}'
+ID=$(curl -s "$B/api/admin/usuarios?q=municipal1" -H "Authorization: Bearer $AT" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["data"][0]["id"])')
+curl -s -o /dev/null -w "desactivar http:%{http_code}\n" -X PUT "$B/api/admin/usuarios/$ID/estado" -H "Authorization: Bearer $AT" -H 'Content-Type: application/json' -d '{"estado":"inactivo"}'
+curl -s -X POST "$B/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"municipal1","password":"Segura123!"}' | safe_error
+
+paso "13b. admin NO puede desactivarse a sí mismo"
+ADMIN_ID=$(curl -s "$B/api/auth/me" -H "Authorization: Bearer $AT" | python3 -c 'import sys,json;print(json.load(sys.stdin)["data"]["id"])')
+curl -s -o /dev/null -w "autodesactivar http:%{http_code} (esperado 403)\n" -X PUT "$B/api/admin/usuarios/$ADMIN_ID/estado" -H "Authorization: Bearer $AT" -H 'Content-Type: application/json' -d '{"estado":"inactivo"}'
+curl -s -o /dev/null -w "admin sigue operativo http:%{http_code} (esperado 200)\n" "$B/api/auth/me" -H "Authorization: Bearer $AT"
+
+paso "13c. reactivar municipal1 => login OK"
+curl -s -o /dev/null -w "reactivar http:%{http_code}\n" -X PUT "$B/api/admin/usuarios/$ID/estado" -H "Authorization: Bearer $AT" -H 'Content-Type: application/json' -d '{"estado":"activo"}'
+curl -s -o /dev/null -w "login municipal reactivado http:%{http_code}\n" -X POST "$B/api/auth/login" -H 'Content-Type: application/json' -d '{"username":"municipal1","password":"Segura123!"}'
+
+echo
+echo "FIN pruebas"

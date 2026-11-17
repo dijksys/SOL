@@ -1,0 +1,44 @@
+# Dependencias
+node_modules/
+vendor/
+
+# Entornos y secretos
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# Respaldos locales de variables de entorno
+.env.save
+.env.save.*
+
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Configuración generada local
+deploy/runtime/
+deploy/backups/
+backups/
+
+# Builds
+dist/
+build/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE / SO
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# CI4
+backend/writable/*
+!backend/writable/index.html
+backend/public/uploads/*

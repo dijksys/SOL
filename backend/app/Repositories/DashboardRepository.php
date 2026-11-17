@@ -1,0 +1,359 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Repositories;
+
+use CodeIgniter\Database\BaseConnection;
+
+/**
+ * Indicadores para dashboards (RF-52..RF-60). Métricas de gestión de empleo, no
+ * solo conteo de registros; los rangos de fecha son opcionales (RF-60).
+ */
+class DashboardRepository
+{
+    private BaseConnection $db;
+
+    public function __construct(?BaseConnection $db = null)
+    {
+        $this->db = $db ?? db_connect();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function administrador(?string $desde = null, ?string $hasta = null): array
+    {
+        $empresas    = $this->db->table('empresas')->select("COUNT(*) total, SUM(estado = 'activo') activas")->get()->getRowArray();
+        $postulantes = $this->db->table('users')->where('rol', 'postulante')->where('estado', 'activo')->countAllResults();
+
+        $ofertas = $this->contarOfertasPorEstado();
+
+        $postulaciones = array_fill_keys(['pendiente', 'en_revision', 'seleccionado', 'no_seleccionado'], 0);
+        $builder = $this->db->table('postulaciones')->select('estado, COUNT(*) n')->where('activo', 1);
+        if ($desde) {
+            $builder->where('fecha_postulacion >=', $desde . ' 00:00:00');
+        }
+        if ($hasta) {
+            $builder->where('fecha_postulacion <=', $hasta . ' 23:59:59');
+        }
+        foreach ($builder->groupBy('estado')->get()->getResultArray() as $fila) {
+            $postulaciones[$fila['estado']] = (int) $fila['n'];
+        }
+
+        $contrataciones = $this->db->table('contrataciones')->select('COUNT(*) total');
+        if ($desde) {
+            $contrataciones->where('fecha_contratacion >=', $desde);
+        }
+        if ($hasta) {
+            $contrataciones->where('fecha_contratacion <=', $hasta);
+        }
+        $totalContrataciones = (int) $contrataciones->get()->getRowArray()['total'];
+
+        // Empresas con procesos de selección en el rango (RF-57).
+        $empresasConProcesos = $this->db->table('postulaciones');
+        if ($desde) {
+            $empresasConProcesos->where('fecha_postulacion >=', $desde . ' 00:00:00');
+        }
+        if ($hasta) {
+            $empresasConProcesos->where('fecha_postulacion <=', $hasta . ' 23:59:59');
+        }
+        $empresasConProcesos->whereIn('estado', ['en_revision', 'seleccionado']);
+
+        $seleccionados = $postulaciones['seleccionado'];
+        $totalPostulaciones = array_sum($postulaciones);
+
+        return [
+            'empresas' => [
+                'total'  => (int) $empresas['total'],
+                'activas' => (int) $empresas['activas'],
+            ],
+            'postulantes_activos' => (int) $postulantes,
+            'ofertas'       => $ofertas,
+            'postulaciones' => $postulaciones,
+            'contrataciones' => $totalContrataciones,
+            // Indicadores de efectividad (RF-57/58/59/60).
+            'empresas_con_procesos' => (int) $empresasConProcesos->select('COUNT(DISTINCT empresa_id) n')->get()->getRowArray()['n'],
+            'seleccionados' => $seleccionados,
+            'tasa_seleccion'      => $totalPostulaciones > 0 ? round($seleccionados / $totalPostulaciones * 100, 1) : 0,
+            'tasa_contratacion'   => $seleccionados > 0 ? round($totalContrataciones / $seleccionados * 100, 1) : 0,
+            ...$this->tiemposPromedio($desde, $hasta),
+            // Serie mensual para el gráfico de actividad (últimos 6 meses o el rango).
+            'actividad_mensual' => $this->postulacionesPorMes($desde, $hasta),
+        ];
+    }
+
+    /**
+     * Postulaciones activas por mes para el gráfico de actividad (RF-60). Sin
+     * rango usa los últimos 6 meses (incluido el actual); con rango, los meses
+     * comprendidos entre desde y hasta (se rellenan los meses sin datos con 0).
+     *
+     * @return list<array{mes: string, etiqueta: string, total: int}>
+     */
+    private function postulacionesPorMes(?string $desde, ?string $hasta): array
+    {
+        if ($desde === null || $hasta === null) {
+            $hoy   = new \DateTimeImmutable('now');
+            $hasta = $hoy->format('Y-m-d');
+            $desde = $hoy->modify('-5 months')->format('Y-m-01');
+        }
+
+        $inicio = (new \DateTimeImmutable($desde))->modify('first day of this month')->setTime(0, 0);
+        $fin    = (new \DateTimeImmutable($hasta))->setTime(0, 0);
+
+        $meses = [];
+        $cursor = $inicio;
+        while ($cursor <= $fin) {
+            $meses[$cursor->format('Y-m')] = 0;
+            $cursor = $cursor->modify('+1 month');
+        }
+
+        $builder = $this->db->table('postulaciones')
+            ->select("DATE_FORMAT(fecha_postulacion, '%Y-%m') AS mes, COUNT(*) AS n")
+            ->where('activo', 1);
+        if ($desde !== null) {
+            $builder->where('fecha_postulacion >=', $desde . ' 00:00:00');
+        }
+        if ($hasta !== null) {
+            $builder->where('fecha_postulacion <=', $hasta . ' 23:59:59');
+        }
+        foreach ($builder->groupBy('mes')->get()->getResultArray() as $fila) {
+            $mes = $fila['mes'];
+            if (isset($meses[$mes])) {
+                $meses[$mes] = (int) $fila['n'];
+            }
+        }
+
+        $abreviado = [1 => 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+        $resultado = [];
+        foreach ($meses as $mes => $total) {
+            $resultado[] = [
+                'mes'      => $mes,
+                'etiqueta' => $abreviado[(int) mb_substr($mes, 5, 2)],
+                'total'    => $total,
+            ];
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * Días promedio hasta la primera revisión y hasta la primera selección
+     * (RF-59), en una sola consulta. El AVG ignora los NULL de cada estado, por
+     * lo que el resultado es idéntico al de dos agregaciones independientes.
+     *
+     * @return array{tiempo_promedio_revision_dias: ?float, tiempo_promedio_seleccion_dias: ?float}
+     */
+    private function tiemposPromedio(?string $desde, ?string $hasta): array
+    {
+        $builder = $this->db->table('postulaciones p')
+            ->select('AVG(TIMESTAMPDIFF(DAY, p.fecha_postulacion, h.primer_revision)) AS revision')
+            ->select('AVG(TIMESTAMPDIFF(DAY, p.fecha_postulacion, h.primera_seleccion)) AS seleccion')
+            ->join('(SELECT postulacion_id,
+                       MIN(CASE WHEN estado_nuevo = "en_revision" THEN created_at END) AS primer_revision,
+                       MIN(CASE WHEN estado_nuevo = "seleccionado" THEN created_at END) AS primera_seleccion
+                     FROM postulacion_historial
+                     WHERE estado_nuevo IN ("en_revision", "seleccionado")
+                     GROUP BY postulacion_id) h', 'h.postulacion_id = p.id', 'INNER');
+
+        if ($desde) {
+            $builder->where('p.fecha_postulacion >=', $desde . ' 00:00:00');
+        }
+        if ($hasta) {
+            $builder->where('p.fecha_postulacion <=', $hasta . ' 23:59:59');
+        }
+
+        $fila = $builder->get()->getRowArray();
+
+        return [
+            'tiempo_promedio_revision_dias'  => $fila['revision'] !== null ? round((float) $fila['revision'], 1) : null,
+            'tiempo_promedio_seleccion_dias' => $fila['seleccion'] !== null ? round((float) $fila['seleccion'], 1) : null,
+        ];
+    }
+
+    /**
+     * Indicadores de una empresa. Las ofertas reflejan su estado actual (como en
+     * el dashboard municipal) y las postulaciones se acotan al periodo opcional.
+     *
+     * @return array<string, mixed>
+     */
+    public function empresa(int $empresaId, ?string $desde = null, ?string $hasta = null): array
+    {
+        $ofertas = $this->contarOfertasPorEstado($empresaId);
+
+        $postulaciones = array_fill_keys(['pendiente', 'en_revision', 'seleccionado', 'no_seleccionado'], 0);
+        $builder = $this->db->table('postulaciones')->where('empresa_id', $empresaId)->where('activo', 1);
+        if ($desde) {
+            $builder->where('fecha_postulacion >=', $desde . ' 00:00:00');
+        }
+        if ($hasta) {
+            $builder->where('fecha_postulacion <=', $hasta . ' 23:59:59');
+        }
+        foreach ($builder->select('estado, COUNT(*) n')->groupBy('estado')->get()->getResultArray() as $fila) {
+            $postulaciones[$fila['estado']] = (int) $fila['n'];
+        }
+
+        $pendientes = $this->db->table('postulaciones p')
+            ->select('p.id, p.estado, p.fecha_postulacion, of.puesto,
+                      po.dni, po.nombres, po.apellidos')
+            ->join('ofertas of', 'of.id = p.oferta_id')
+            ->join('postulantes po', 'po.id = p.postulante_id')
+            ->where('p.empresa_id', $empresaId)
+            ->where('p.estado', 'pendiente')
+            ->where('p.activo', 1);
+        if ($desde) {
+            $pendientes->where('p.fecha_postulacion >=', $desde . ' 00:00:00');
+        }
+        if ($hasta) {
+            $pendientes->where('p.fecha_postulacion <=', $hasta . ' 23:59:59');
+        }
+        $pendientesRecientes = $pendientes->orderBy('p.fecha_postulacion', 'DESC')
+            ->limit(10)
+            ->get()
+            ->getResultArray();
+
+        return [
+            'ofertas'            => $ofertas,
+            'postulaciones'      => $postulaciones,
+            'pendientes_recientes' => $pendientesRecientes,
+        ];
+    }
+
+    /**
+     * Conteos de ofertas por estado efectivo. Una oferta publicada con cierre
+     * anterior a hoy se agrupa como `vencida` (estado derivado, no persistido),
+     * para que paneles y reportes no la sigan contando como publicada.
+     *
+     * @return array<string, int>
+     */
+    private function contarOfertasPorEstado(?int $empresaId = null): array
+    {
+        $ofertas = array_fill_keys(['borrador', 'pendiente', 'publicada', 'vencida', 'cerrada', 'rechazada', 'observada'], 0);
+        $hoy = $this->db->escape(date('Y-m-d'));
+        $estadoEfectivo = "CASE WHEN estado = 'publicada' AND fecha_cierre IS NOT NULL AND fecha_cierre < {$hoy} "
+            . "THEN 'vencida' ELSE estado END";
+
+        $builder = $this->db->table('ofertas')
+            ->select("{$estadoEfectivo} AS estado, COUNT(*) n", false);
+        if ($empresaId !== null) {
+            $builder->where('empresa_id', $empresaId);
+        }
+
+        // GROUP BY debe repetir la expresión, no el alias: MySQL con
+        // ONLY_FULL_GROUP_BY no puede inferir la dependencia de fecha_cierre.
+        foreach ($builder->groupBy($estadoEfectivo, false)->get()->getResultArray() as $fila) {
+            if (isset($ofertas[$fila['estado']])) {
+                $ofertas[$fila['estado']] = (int) $fila['n'];
+            }
+        }
+
+        return $ofertas;
+    }
+
+    /**
+     * Conteos de atención pendiente para el admin (indicadores de la sidebar):
+     * ofertas por revisar y solicitudes de empresa sin resolver.
+     *
+     * @return array{ofertas: int, solicitudes: int}
+     */
+    public function pendientesAdmin(): array
+    {
+        return [
+            'ofertas'     => (int) $this->db->table('ofertas')->where('estado', 'pendiente')->countAllResults(),
+            'solicitudes' => (int) $this->db->table('solicitudes_empresa')->where('estado', 'pendiente')->countAllResults(),
+        ];
+    }
+
+    /**
+     * Conteos de atención pendiente de una empresa (indicadores de la sidebar):
+     * ofertas observadas que requieren corrección y postulaciones por revisar.
+     *
+     * @return array{ofertas_observadas: int, ofertas_rechazadas: int, postulaciones: int}
+     */
+    public function pendientesEmpresa(int $empresaId): array
+    {
+        return [
+            'ofertas_observadas' => (int) $this->db->table('ofertas')
+                ->where('empresa_id', $empresaId)->where('estado', 'observada')->countAllResults(),
+            'ofertas_rechazadas' => (int) $this->db->table('ofertas')
+                ->where('empresa_id', $empresaId)->where('estado', 'rechazada')->countAllResults(),
+            'postulaciones' => (int) $this->db->table('postulaciones')
+                ->where('empresa_id', $empresaId)->where('activo', 1)->where('estado', 'pendiente')->countAllResults(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function postulante(int $postulanteId): array
+    {
+        $postulaciones = array_fill_keys(['pendiente', 'en_revision', 'seleccionado', 'no_seleccionado'], 0);
+        foreach ($this->db->table('postulaciones')->where('postulante_id', $postulanteId)->where('activo', 1)
+            ->select('estado, COUNT(*) n')->groupBy('estado')->get()->getResultArray() as $fila) {
+            $postulaciones[$fila['estado']] = (int) $fila['n'];
+        }
+
+        $conCv = (bool) $this->db->table('cvs')->where('postulante_id', $postulanteId)->where('activo', 1)->countAllResults();
+
+        return [
+            'postulaciones' => $postulaciones,
+            'total_postulaciones' => array_sum($postulaciones),
+            'con_cv' => $conCv,
+        ];
+    }
+
+    /**
+     * Estadísticas de empleabilidad (RF-58/RF-60): empleos generados, empresas
+     * que los generan, empleos vigentes por empresa y situación de las
+     * contrataciones. Todo con agregaciones SQL (sin N+1).
+     *
+     * @return array<string, mixed>
+     */
+    public function empleabilidad(): array
+    {
+        $totalOfertas = (int) $this->db->table('ofertas')->countAllResults();
+        $hoy = date('Y-m-d');
+        $vigentes = (int) $this->db->table('ofertas')
+            ->where('estado', 'publicada')
+            ->groupStart()
+                ->where('fecha_cierre IS NULL')
+                ->orWhere('fecha_cierre >=', $hoy)
+            ->groupEnd()
+            ->countAllResults();
+
+        $porEmpresa = $this->db->table('ofertas o')
+            ->select("e.id AS empresa_id, e.razon_social, e.ruc,
+                      COUNT(o.id) AS total_ofertas,
+                      SUM(CASE WHEN o.estado = 'publicada'
+                          AND (o.fecha_cierre IS NULL OR o.fecha_cierre >= " . $this->db->escape($hoy) . ")
+                          THEN 1 ELSE 0 END) AS vigentes", false)
+            ->join('empresas e', 'e.id = o.empresa_id')
+            ->groupBy('e.id, e.razon_social, e.ruc')
+            ->orderBy('total_ofertas', 'DESC')
+            ->limit(100)
+            ->get()
+            ->getResultArray();
+
+        $situaciones = array_fill_keys(['contratado', 'finalizado', 'despedido', 'renuncio'], 0);
+        foreach ($this->db->table('contrataciones')
+            ->select('situacion_laboral, COUNT(*) n')
+            ->groupBy('situacion_laboral')
+            ->get()->getResultArray() as $fila) {
+            $situaciones[$fila['situacion_laboral']] = (int) $fila['n'];
+        }
+
+        return [
+            'ofertas_generadas' => $totalOfertas,
+            'ofertas_vigentes'  => $vigentes,
+            'contrataciones'    => array_sum($situaciones),
+            'empresas'          => array_map(static fn ($r) => [
+                'empresa_id'    => (int) $r['empresa_id'],
+                'razon_social'  => $r['razon_social'],
+                'ruc'           => $r['ruc'],
+                'total_ofertas' => (int) $r['total_ofertas'],
+                'vigentes'      => (int) $r['vigentes'],
+            ], $porEmpresa),
+            'situaciones' => $situaciones,
+        ];
+    }
+}

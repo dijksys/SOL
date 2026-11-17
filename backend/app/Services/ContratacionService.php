@@ -1,0 +1,297 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Services;
+
+use App\Exceptions\ApiException;
+use App\Models\ContratacionModel;
+use App\Validation\Validador;
+
+/**
+ * Registro de contrataciones resultado de la intermediación (RF-58). Solo puede
+ * registrar una contratación la empresa dueña de una postulación en estado
+ * "seleccionado" (RN-18). Una postulación admite una sola contratación.
+ */
+class ContratacionService
+{
+    private ContratacionModel $contrataciones;
+
+    public function __construct(?ContratacionModel $contrataciones = null)
+    {
+        $this->contrataciones = $contrataciones ?? model(ContratacionModel::class);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarDeEmpresa(int $empresaId, ?string $desde = null, ?string $hasta = null): array
+    {
+        $builder = $this->base()->where('c.empresa_id', $empresaId);
+        if ($desde !== null) {
+            $builder->where('c.fecha_contratacion >=', $desde);
+        }
+        if ($hasta !== null) {
+            $builder->where('c.fecha_contratacion <=', $hasta);
+        }
+
+        return $builder->orderBy('c.fecha_contratacion', 'DESC')
+            ->get()
+            ->getResultArray();
+    }
+
+    /**
+     * Postulaciones seleccionadas de la empresa que aún no tienen contratación
+     * registrada (opciones para registrar un contrato).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function opcionesDeEmpresa(int $empresaId): array
+    {
+        return $this->contrataciones->db->table('postulaciones p')
+            ->select('p.id, po.nombres, po.apellidos, po.tipo_documento, po.dni, of.puesto, p.fecha_postulacion')
+            ->join('postulantes po', 'po.id = p.postulante_id')
+            ->join('ofertas of', 'of.id = p.oferta_id')
+            ->where('p.empresa_id', $empresaId)
+            ->where('p.estado', 'seleccionado')
+            ->where('p.activo', 1)
+            ->where('NOT EXISTS (SELECT 1 FROM contrataciones c WHERE c.postulacion_id = p.id)', null, false)
+            ->orderBy('p.fecha_postulacion', 'DESC')
+            ->get()
+            ->getResultArray();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarGlobal(array $filtros): array
+    {
+        $builder = $this->base();
+
+        if (! empty($filtros['desde'])) {
+            $builder->where('c.fecha_contratacion >=', $filtros['desde']);
+        }
+        if (! empty($filtros['hasta'])) {
+            $builder->where('c.fecha_contratacion <=', $filtros['hasta']);
+        }
+
+        return $builder->orderBy('c.fecha_contratacion', 'DESC')->limit(300)->get()->getResultArray();
+    }
+
+    /**
+     * @param array<string, mixed> $datos
+     */
+    public function registrar(int $empresaId, array $datos): int
+    {
+        if (! Validador::esEnteroPositivo($datos['postulacion_id'] ?? null)) {
+            $mensaje = 'Indique una postulación seleccionada válida.';
+            throw ApiException::validacion($mensaje, [$mensaje], ['postulacion_id' => $mensaje]);
+        }
+
+        $postulacion = $this->postulacionDeEmpresa((int) $datos['postulacion_id'], $empresaId);
+        if ((int) $postulacion['activo'] !== 1) {
+            throw ApiException::conflicto('La postulación ya no está activa.');
+        }
+        if ($postulacion['estado'] !== 'seleccionado') {
+            throw ApiException::conflicto('Solo puede registrar la contratación de un candidato seleccionado.');
+        }
+
+        $yaRegistrado = $this->contrataciones->where('postulacion_id', (int) $postulacion['id'])->countAllResults();
+        if ($yaRegistrado) {
+            throw ApiException::conflicto('Esta postulación ya tiene una contratación registrada.');
+        }
+
+        $datos = $this->validar($datos);
+        $fechaSituacion = self::resolverFechaSituacionRegistro(
+            $datos['fecha_situacion'] ?? null,
+            (string) $datos['fecha_contratacion'],
+        );
+        $situacion      = $datos['situacion_laboral'] ?? 'contratado';
+        $motivo         = $datos['motivo_situacion'] ?? null;
+        $this->validarSituacion($situacion, $motivo, $datos['fecha_contratacion'], $fechaSituacion);
+
+        $this->contrataciones->insert([
+            'postulacion_id'      => (int) $postulacion['id'],
+            'empresa_id'          => $empresaId,
+            'oferta_id'           => (int) $postulacion['oferta_id'],
+            'postulante_id'       => (int) $postulacion['postulante_id'],
+            'fecha_contratacion'  => $datos['fecha_contratacion'],
+            'cargo'               => $datos['cargo'],
+            'modalidad'           => $datos['modalidad'] ?? null,
+            'remuneracion'        => $datos['remuneracion'] ?? null,
+            'observaciones'       => $datos['observaciones'] ?? null,
+            // Situación laboral inicial: recién contratado.
+            'situacion_laboral'   => $datos['situacion_laboral'] ?? 'contratado',
+            'motivo_situacion'    => $datos['motivo_situacion'] ?? null,
+            'fecha_situacion'     => $fechaSituacion,
+        ]);
+
+        return (int) $this->contrataciones->getInsertID();
+    }
+
+    /**
+     * @param array<string, mixed> $datos
+     */
+    public function actualizar(int $empresaId, int $id, array $datos): void
+    {
+        $contrato = $this->contrataciones->find($id);
+        if ($contrato === null || (int) $contrato['empresa_id'] !== $empresaId) {
+            throw ApiException::noEncontrado('La contratación no existe.');
+        }
+
+        $datos = $this->validar($datos + ['postulacion_id' => $contrato['postulacion_id']]);
+
+        // Al cambiar la situación laboral se registra cuándo ocurrió (si no se
+        // indicó una fecha explícita) y el motivo queda separado para auditoría.
+        $situacion = $datos['situacion_laboral'] ?? $contrato['situacion_laboral'];
+        $fechaSituacion = self::resolverFechaSituacionEdicion(
+            $datos['fecha_situacion'] ?? null,
+            $contrato['fecha_situacion'] ?? null,
+            $situacion,
+            (string) $contrato['situacion_laboral'],
+        );
+        $motivo = $datos['motivo_situacion'] ?? $contrato['motivo_situacion'];
+        $this->validarSituacion($situacion, $motivo, $datos['fecha_contratacion'], $fechaSituacion);
+
+        $this->contrataciones->update($id, [
+            'fecha_contratacion' => $datos['fecha_contratacion'],
+            'cargo'              => $datos['cargo'],
+            'modalidad'          => $datos['modalidad'] ?? null,
+            'remuneracion'       => $datos['remuneracion'] ?? null,
+            'observaciones'      => $datos['observaciones'] ?? null,
+            'situacion_laboral'  => $situacion,
+            'motivo_situacion'   => $datos['motivo_situacion'] ?? $contrato['motivo_situacion'],
+            'fecha_situacion'    => $fechaSituacion,
+        ]);
+    }
+
+    /**
+     * Fecha efectiva al registrar: una cadena vacía no es una fecha. Si el
+     * formulario no la envía, se usa la fecha de contratación.
+     */
+    public static function resolverFechaSituacionRegistro(?string $fecha, string $fechaContratacion): string
+    {
+        return self::fechaONull($fecha) ?? $fechaContratacion;
+    }
+
+    /**
+     * Fecha efectiva al editar: explícita si llega; si la situación cambió,
+     * hoy (zona horaria de la app); si no cambió, la fecha histórica.
+     * Nunca devuelve una cadena vacía para una columna DATE.
+     */
+    public static function resolverFechaSituacionEdicion(
+        ?string $fecha,
+        ?string $fechaAnterior,
+        string $situacion,
+        string $situacionAnterior,
+        ?string $hoy = null,
+    ): ?string
+    {
+        $fecha = self::fechaONull($fecha);
+        if ($fecha !== null) {
+            return $fecha;
+        }
+
+        if ($situacion !== $situacionAnterior) {
+            return $hoy ?? date('Y-m-d');
+        }
+
+        return self::fechaONull($fechaAnterior);
+    }
+
+    private static function fechaONull(?string $fecha): ?string
+    {
+        $fecha = trim((string) $fecha);
+
+        // MariaDB puede conservar fechas cero de versiones anteriores; no son
+        // una fecha efectiva y no deben volver a escribirse.
+        if ($fecha === '' || str_starts_with($fecha, '0000-00-00')) {
+            return null;
+        }
+
+        return $fecha;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function postulacionDeEmpresa(int $postulacionId, int $empresaId): array
+    {
+        $fila = $this->contrataciones->db->table('postulaciones')
+            ->select('id, oferta_id, postulante_id, estado, activo')
+            ->where('id', $postulacionId)
+            ->where('empresa_id', $empresaId)
+            ->get()
+            ->getRowArray();
+
+        if ($fila === null) {
+            throw ApiException::noEncontrado('La postulación no existe.');
+        }
+
+        return $fila;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function validar(array $datos): array
+    {
+        Validador::validar($datos, [
+            'fecha_contratacion' => ['required', 'fecha'],
+            'cargo'              => ['required', 'max:150'],
+            'modalidad'          => ['max:60'],
+            'remuneracion'       => ['regex:/^\d{1,10}(\.\d{1,2})?$/'],
+            'observaciones'      => ['max:10000'],
+            'situacion_laboral'  => ['enum:contratado,finalizado,despedido,renuncio'],
+            'motivo_situacion'   => ['max:255'],
+            'fecha_situacion'    => ['fecha'],
+        ]);
+
+        return $datos;
+    }
+
+    /**
+     * Valida coherencia temporal y motivo de la situación laboral.
+     *
+     * - fecha_situacion >= fecha_contratacion;
+     * - fecha_situacion no futura (America/Lima, `date()` usa la zona de la app);
+     * - motivo obligatorio para despedido/renuncio;
+     * - finalizado y contratado pueden quedar sin motivo.
+     */
+    private function validarSituacion(string $situacion, $motivo, string $fechaContratacion, ?string $fechaSituacion): void
+    {
+        if ($motivo !== null && ! is_string($motivo)) {
+            $mensaje = 'El motivo de la situación no es válido.';
+            throw ApiException::validacion($mensaje, [$mensaje], ['motivo_situacion' => $mensaje]);
+        }
+
+        $motivo = trim((string) ($motivo ?? ''));
+        if (in_array($situacion, ['despedido', 'renuncio'], true) && $motivo === '') {
+            $mensaje = 'Indique el motivo de la situación laboral.';
+            throw ApiException::validacion($mensaje, [$mensaje], ['motivo_situacion' => $mensaje]);
+        }
+
+        if ($fechaSituacion === null || trim($fechaSituacion) === '') {
+            return;
+        }
+
+        if ($fechaSituacion < $fechaContratacion) {
+            $mensaje = 'La fecha de situación no puede ser anterior a la fecha de contratación.';
+            throw ApiException::validacion($mensaje, [$mensaje], ['fecha_situacion' => $mensaje]);
+        }
+
+        if (! Validador::esFechaNoFutura($fechaSituacion)) {
+            $mensaje = 'La fecha de situación no puede ser futura.';
+            throw ApiException::validacion($mensaje, [$mensaje], ['fecha_situacion' => $mensaje]);
+        }
+    }
+
+    private function base(): \CodeIgniter\Database\BaseBuilder
+    {
+        return $this->contrataciones->db->table('contrataciones c')
+            ->select('c.*, po.tipo_documento, po.dni, po.nombres, po.apellidos, of.puesto, emp.razon_social, emp.ruc')
+            ->join('postulantes po', 'po.id = c.postulante_id')
+            ->join('ofertas of', 'of.id = c.oferta_id')
+            ->join('empresas emp', 'emp.id = c.empresa_id');
+    }
+}

@@ -1,0 +1,27 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Models;
+
+use App\Entities\Postulante;
+use CodeIgniter\Model;
+
+class PostulanteModel extends Model
+{
+    protected $table         = 'postulantes';
+    protected $primaryKey    = 'id';
+    protected $returnType    = Postulante::class;
+    protected $useTimestamps = true;
+
+    protected $allowedFields = [
+        'user_id', 'tipo_documento', 'dni', 'nombres', 'apellidos', 'fecha_nacimiento',
+        'direccion', 'distrito', 'telefono', 'ocupacion', 'experiencia', 'estudios',
+        'foto_key',
+    ];
+
+    public function porUserId(int $userId): ?Postulante
+    {
+        return $this->where('user_id', $userId)->first();
+    }
+}

@@ -1,0 +1,318 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Validation;
+
+use App\Exceptions\ApiException;
+
+/**
+ * Validación de datos recibidos desde el frontend. El backend siempre revalida
+ * lo que React envía (RT-22). Reglas planas: required, min, max, email, ruc, dni,
+ * telefono, fecha, fecha_hora, password, aceptacion, regex, enum, igual
+ * (confirmación de contraseñas).
+ */
+final class Validador
+{
+    /**
+     * Fecha calendárica AAAA-MM-DD (rechaza meses/días inexistentes, no solo
+     * el formato). El regex por sí solo acepta 2026-13-01 o 2026-02-31.
+     */
+    public static function esFecha(string $valor): bool
+    {
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $valor, $m) !== 1) {
+            return false;
+        }
+
+        return checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
+    }
+
+    /**
+     * Texto visible de un contenido (HTML sanitizado o texto plano): sin
+     * etiquetas, con entidades decodificadas y espacios duros normalizados.
+     * Es la definición canónica compartida con el contador del frontend.
+     */
+    public static function textoVisible(string $html): string
+    {
+        $texto = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return str_replace("\u{00A0}", ' ', $texto);
+    }
+
+    /**
+     * Longitud en caracteres (code points Unicode) del texto visible, no del
+     * HTML. `"Hola <strong>mundo</strong>"` cuenta 10, nunca las etiquetas.
+     */
+    public static function longitudTexto(string $html): int
+    {
+        return mb_strlen(self::textoVisible($html));
+    }
+
+    public static function esContrasenaSegura(string $valor): bool
+    {
+        return mb_strlen($valor) >= 8
+            && preg_match('/\p{L}/u', $valor) === 1
+            && preg_match('/\p{N}/u', $valor) === 1
+            && preg_match('/[^\p{L}\p{N}]/u', $valor) === 1;
+    }
+
+    /**
+     * Fecha y hora calendárica; admite `AAAA-MM-DD` y `AAAA-MM-DD HH:MM[:SS]`.
+     */
+    public static function esFechaHora(string $valor): bool
+    {
+        if (self::esFecha($valor)) {
+            return true;
+        }
+        if (preg_match('/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/', $valor, $m) !== 1) {
+            return false;
+        }
+
+        return self::esFecha($m[1])
+            && (int) $m[2] <= 23
+            && (int) $m[3] <= 59
+            && (! isset($m[4]) || (int) $m[4] <= 59);
+    }
+
+    /** Identificador entero positivo: entero JSON o cadena de dígitos, nunca decimal. */
+    public static function esEnteroPositivo($valor): bool
+    {
+        if (is_int($valor)) {
+            return $valor > 0;
+        }
+
+        return is_string($valor)
+            && preg_match('/^[1-9]\d*$/', $valor) === 1;
+    }
+
+    /**
+     * Booleano estricto para cuerpos JSON: true/false, 0/1 y las cadenas
+     * canónicas "true"/"false"/"1"/"0". Cualquier otro valor es inválido.
+     *
+     * @param mixed $valor
+     */
+    public static function esBooleano($valor): bool
+    {
+        if (is_bool($valor) || (is_int($valor) && ($valor === 0 || $valor === 1))) {
+            return true;
+        }
+
+        return is_string($valor)
+            && in_array(strtolower(trim($valor)), ['true', 'false', '1', '0'], true);
+    }
+
+    /**
+     * Resuelve un campo de texto opcional en una actualización parcial:
+     * - ausente: conserva el valor actual;
+     * - null, cadena vacía o tipo no string: error 422;
+     * - presente: devuelve el texto recortado.
+     *
+     * @param array<string, mixed> $datos
+     *
+     * @throws ApiException
+     */
+    public static function textoActualizacion(array $datos, string $campo, ?string $actual, string $etiqueta): ?string
+    {
+        if (! array_key_exists($campo, $datos)) {
+            return $actual;
+        }
+
+        $valor = $datos[$campo];
+        if (! is_string($valor) || trim($valor) === '') {
+            $mensaje = "El campo {$etiqueta} no puede quedar vacío.";
+            throw ApiException::validacion($mensaje, [$mensaje], [$campo => $mensaje]);
+        }
+
+        return trim($valor);
+    }
+
+    /** Fecha calendárica que no supera el día actual en la zona de la aplicación. */
+    public static function esFechaNoFutura(string $valor, ?string $hoy = null): bool
+    {
+        return self::esFecha($valor) && $valor <= ($hoy ?? date('Y-m-d'));
+    }
+
+    /**
+     * @param array<string, mixed> $datos
+     * @param array<string, list<string>> $reglas campo => reglas
+     *
+     * @throws ApiException con errores campo => mensaje
+     */
+    public static function validar(array $datos, array $reglas): void
+    {
+        $errores = [];
+
+        foreach ($reglas as $campo => $reglasCampo) {
+            $valor = $datos[$campo] ?? null;
+            $etiqueta = ucfirst(str_replace('_', ' ', $campo));
+
+            // Los campos validados por reglas planas son escalares. Un array u
+            // objeto no se convierte en "Array" ni llega a la base de datos.
+            if ($valor !== null && ! is_scalar($valor)) {
+                $errores[$campo] = "El campo {$etiqueta} no tiene un tipo válido.";
+                continue;
+            }
+
+            foreach ($reglasCampo as $regla) {
+                if ($regla === 'required' && self::esVacio($valor)) {
+                    $errores[$campo] = $campo === 'terms_accepted'
+                        ? 'Debe aceptar los Términos y Condiciones para continuar.'
+                        : "El campo {$etiqueta} es obligatorio.";
+                    break;
+                }
+                if (self::esVacio($valor)) {
+                    continue;
+                }
+
+                switch (true) {
+                    case $regla === 'id' && ! self::esEnteroPositivo($valor):
+                        $errores[$campo] = "El campo {$etiqueta} debe ser un identificador válido.";
+                        break 2;
+
+                    case $regla === 'email' && filter_var($valor, FILTER_VALIDATE_EMAIL) === false:
+                        $errores[$campo] = "El campo {$etiqueta} debe ser un correo válido.";
+                        break 2;
+
+                    case $regla === 'ruc' && ! preg_match('/^\d{11}$/', (string) $valor):
+                        $errores[$campo] = "El campo {$etiqueta} debe ser un RUC de 11 dígitos.";
+                        break 2;
+
+                    case $regla === 'dni' && ! preg_match('/^\d{8}$/', (string) $valor):
+                        $errores[$campo] = "El campo {$etiqueta} debe ser un DNI de 8 dígitos.";
+                        break 2;
+
+                    case $regla === 'telefono' && ! preg_match('/^(?:\d{9}|\d{11})$/', (string) $valor):
+                        $errores[$campo] = "El campo {$etiqueta} debe tener 9 u 11 dígitos.";
+                        break 2;
+
+                    case $regla === 'password' && ! self::esContrasenaSegura((string) $valor):
+                        $errores[$campo] = 'La contraseña debe tener al menos 8 caracteres, una letra, un número y un símbolo especial.';
+                        break 2;
+
+                    // Aceptación explícita: solo el booleano JSON true. No se
+                    // aceptan "true", 1, "1" ni otros valores por coerción.
+                    case $regla === 'aceptacion' && $valor !== true:
+                        $errores[$campo] = 'Debe aceptar los Términos y Condiciones para continuar.';
+                        break 2;
+
+                    case $regla === 'fecha' && ! self::esFecha((string) $valor):
+                        $errores[$campo] = "El campo {$etiqueta} debe ser una fecha válida (AAAA-MM-DD).";
+                        break 2;
+
+                    case $regla === 'fecha_hora' && ! self::esFechaHora((string) $valor):
+                        $errores[$campo] = "El campo {$etiqueta} debe ser una fecha y hora válidas.";
+                        break 2;
+
+                    case str_starts_with($regla, 'min:') && mb_strlen((string) $valor) < (int) substr($regla, 4):
+                        $errores[$campo] = "El campo {$etiqueta} debe tener al menos " . substr($regla, 4) . ' caracteres.';
+                        break 2;
+
+                    case str_starts_with($regla, 'max:') && mb_strlen((string) $valor) > (int) substr($regla, 4):
+                        $errores[$campo] = "El campo {$etiqueta} no debe superar " . substr($regla, 4) . ' caracteres.';
+                        break 2;
+
+                    // Longitud del texto visible (RTE): no cuenta etiquetas HTML.
+                    case str_starts_with($regla, 'texto_max:') && self::longitudTexto((string) $valor) > (int) substr($regla, 10):
+                        $errores[$campo] = "El campo {$etiqueta} no debe superar " . substr($regla, 10) . ' caracteres de texto.';
+                        break 2;
+
+                    // URL http(s) válida y segura (sin esquemas peligrosos).
+                    case $regla === 'url' && ! self::esUrlHttps((string) $valor):
+                        $errores[$campo] = "El campo {$etiqueta} debe ser una URL válida con http o https.";
+                        break 2;
+
+                    // URL cuyo host debe ser el dominio indicado o un subdominio suyo.
+                    case str_starts_with($regla, 'url_dominio:') && ! self::dominioPermitido((string) $valor, substr($regla, 12)):
+                        $errores[$campo] = "El campo {$etiqueta} debe ser un enlace de la red social correspondiente.";
+                        break 2;
+
+                    case str_starts_with($regla, 'regex:'):
+                        if (preg_match(substr($regla, 6), (string) $valor) !== 1) {
+                            $errores[$campo] = "El campo {$etiqueta} no tiene un formato válido.";
+                            break 2;
+                        }
+                        break;
+
+                    case str_starts_with($regla, 'enum:'):
+                        if (! in_array($valor, explode(',', substr($regla, 5)), true)) {
+                            $errores[$campo] = "El campo {$etiqueta} tiene un valor no permitido.";
+                            break 2;
+                        }
+                        break;
+
+                    case str_starts_with($regla, 'igual:'):
+                        $otro = substr($regla, 6);
+                        if (! array_key_exists($otro, $datos) || $datos[$otro] !== $valor) {
+                            $errores[$campo] = 'La confirmación no coincide.';
+                            break 2;
+                        }
+                        break;
+                }
+            }
+        }
+
+        if ($errores !== []) {
+            throw ApiException::validacion('Hay errores en los datos enviados.', array_values($errores), $errores);
+        }
+    }
+
+    /**
+     * Vacío a efectos de validación: null o cadena compuesta solo por espacios.
+     * Así "   " se trata como vacío (p. ej. en `required`), sin tocar el
+     * contenido legítimo. Otros tipos (0, [], false) NO son vacíos.
+     *
+     * @param mixed $valor
+     */
+    private static function esVacio($valor): bool
+    {
+        return $valor === null || (is_string($valor) && trim($valor) === '');
+    }
+
+    /**
+     * URL absoluta http(s) válida y de longitud razonable. Rechaza esquemas
+     * peligrosos (javascript:, data:, file:) y valores que no son URL.
+     */
+    public static function esUrlHttps(string $valor): bool
+    {
+        if ($valor === '' || mb_strlen($valor) > 255) {
+            return false;
+        }
+
+        $esquema = strtolower((string) parse_url($valor, PHP_URL_SCHEME));
+        if (! in_array($esquema, ['http', 'https'], true)) {
+            return false;
+        }
+
+        return filter_var($valor, FILTER_VALIDATE_URL) !== false;
+    }
+
+    /**
+     * Comprueba que la URL sea http(s) y que su host sea exactamente uno de los
+     * dominios indicados (CSV) o un subdominio legítimo suyo. Compara sobre el
+     * host real, no sobre el texto, de modo que "instagram.com.ejemplo.com" no
+     * se acepta para el dominio "instagram.com".
+     */
+    public static function dominioPermitido(string $valor, string $dominios): bool
+    {
+        if (! self::esUrlHttps($valor)) {
+            return false;
+        }
+
+        $host = strtolower((string) parse_url($valor, PHP_URL_HOST));
+        if ($host === '') {
+            return false;
+        }
+
+        foreach (explode(',', $dominios) as $dominio) {
+            $dominio = strtolower(trim($dominio));
+            if ($dominio === '') {
+                continue;
+            }
+            if ($host === $dominio || str_ends_with($host, '.' . $dominio)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+}

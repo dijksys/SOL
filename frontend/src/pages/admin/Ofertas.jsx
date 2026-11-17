@@ -1,0 +1,299 @@
+// SPDX-License-Identifier: MIT
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  aprobarOfertaAdmin,
+  cerrarOfertaAdmin,
+  detalleOfertaAdmin,
+  listarOfertasAdmin,
+  observarOfertaAdmin,
+  rechazarOfertaAdmin,
+} from '../../services/ofertas';
+import { EstadoCarga, Boton, Estado, ListaVacia, Mensaje, Tarjeta } from '../../components/UI';
+import Modal from '../../components/Modal';
+import FichaDatos from '../../components/FichaDatos';
+import ContenidoEnriquecido from '../../components/ContenidoEnriquecido';
+import { useDialogo, useToast } from '../../components/Feedbacks';
+import { Check, Eye, Lock, MessageSquareWarning, XCircle } from 'lucide-react';
+import { ETIQUETA_ESTADO_OFERTA, ETIQUETA_TIPO_EMPLEO } from '../../constants';
+import { errorApi, fechaCalendario, fechaHora } from '../../utils';
+import { useAccion } from '../../hooks/useAccion';
+import { usePermisosMunicipales } from '../../hooks/usePermisosMunicipales';
+
+const FILTROS = [
+  ['', 'Todas'],
+  ['pendiente', 'Pendientes'],
+  ['observada', 'Observadas'],
+  ['publicada', 'Publicadas'],
+  ['vencida', 'Vencidas'],
+  ['rechazada', 'Rechazadas'],
+  ['cerrada', 'Cerradas'],
+];
+
+export default function Ofertas() {
+  const { puede } = usePermisosMunicipales();
+  const puedeRevisar = puede('ofertas');
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const [filtro, setFiltro] = useState('');
+  const [seleccionada, setSeleccionada] = useState(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['ofertas-admin', filtro],
+    queryFn: () => listarOfertasAdmin({ estado: filtro || undefined }),
+  });
+
+  const refrescar = ({ cerrar = false } = {}) => {
+    queryClient.invalidateQueries({ queryKey: ['ofertas-admin'] });
+    queryClient.invalidateQueries({ queryKey: ['oferta-admin-detalle'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-admin'] });
+    if (cerrar) setSeleccionada(null);
+  };
+
+  return (
+    <Tarjeta titulo="Revisión de ofertas laborales">
+      {puedeRevisar ? (
+        <p style={{ color: 'var(--gris)', fontSize: '0.85rem', marginBottom: '0.6rem' }}>
+          Las empresas envían sus ofertas a revisión municipal. Apruébalas para publicarlas en
+          la bolsa de empleo, <b>obsérvalas</b> para que la empresa corrija (no se publican) o
+          <b> recházalas</b> definitivamente (quedan bloqueadas). También puedes cerrar una
+          oferta publicada.
+        </p>
+      ) : (
+        <p style={{ color: 'var(--gris)', fontSize: '0.85rem', marginBottom: '0.6rem' }}>
+          Consulta de ofertas laborales. Tu perfil no permite aprobar, observar, rechazar ni cerrar ofertas.
+        </p>
+      )}
+      <div className="form-fila filtros" style={{ marginBottom: '0.8rem' }}>
+        {FILTROS.map(([valor, etiqueta]) => (
+          <Boton
+            key={valor || 'todas'}
+            variante={filtro === valor ? 'primario' : 'gris'}
+            onClick={() => setFiltro(valor)}
+          >
+            {etiqueta}
+          </Boton>
+        ))}
+      </div>
+
+      {isLoading && <EstadoCarga />}
+      {data && data.length === 0 && <ListaVacia texto="No hay ofertas en este estado." />}
+
+      {data && data.length > 0 && (
+        <div className="tabla-scroll">
+  <table className="tabla-ofertas">
+            <thead>
+              <tr>
+                <th>Estado</th>
+                <th>Puesto</th>
+                <th>Empresa</th>
+                <th className="col-identificador">RUC</th>
+                <th className="col-monto">Vac.</th>
+                <th className="col-fecha">Cierre</th>
+                <th className="col-fecha">Enviada</th>
+                <th className="col-acciones">Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((o) => (
+                <tr key={o.id}>
+                  <td data-label="Estado"><Estado valor={o.estado_efectivo || o.estado} diccionario={ETIQUETA_ESTADO_OFERTA} /></td>
+                  <td data-label="Puesto"><strong>{o.puesto}</strong></td>
+                  <td data-label="Empresa">{o.razon_social}</td>
+                  <td className="col-identificador" data-label="RUC">{o.ruc}</td>
+                  <td className="col-monto" data-label="Vacantes">{o.vacantes}</td>
+                  <td className="col-fecha" data-label="Cierre">{o.fecha_cierre ? fechaCalendario(o.fecha_cierre) : '—'}</td>
+                  <td className="col-fecha" data-label="Enviada">{fechaHora(o.created_at)}</td>
+                  <td className="col-acciones">
+                    <div className="acciones">
+                      <Boton variante="gris" onClick={() => setSeleccionada(o)}>
+                        <Eye size={16} aria-hidden="true" />Ver
+                      </Boton>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <DetalleOferta
+        oferta={seleccionada}
+        puedeRevisar={puedeRevisar}
+        alCerrar={() => setSeleccionada(null)}
+        alCambio={(mensaje) => { toast.success(mensaje); refrescar({ cerrar: true }); }}
+      />
+    </Tarjeta>
+  );
+}
+
+function DetalleOferta({ oferta, puedeRevisar, alCerrar, alCambio }) {
+  const [error, setError] = useState(null);
+  const { confirmar, pedirTexto } = useDialogo();
+  const { ejecutar, enviando } = useAccion(async (fn) => fn());
+  const { data: detalle, isLoading } = useQuery({
+    queryKey: ['oferta-admin-detalle', oferta?.id],
+    queryFn: () => detalleOfertaAdmin(oferta.id),
+    enabled: Boolean(oferta?.id),
+  });
+
+  if (!oferta) return null;
+  const o = detalle || oferta;
+  const estado = o.estado_efectivo || o.estado;
+
+  const aprobar = async () => {
+    const ok = await confirmar({
+      titulo: 'Aprobar oferta',
+      mensaje: `¿Aprobar y publicar la oferta "${oferta.puesto}"?`,
+      textoConfirmar: 'Aprobar y publicar',
+      variante: 'exito',
+    });
+    if (!ok) return;
+    accion(() => aprobarOfertaAdmin(oferta.id), 'Oferta aprobada y publicada.');
+  };
+
+  const rechazar = async () => {
+    const motivo = await pedirTexto({
+      titulo: 'Rechazar oferta',
+      mensaje: 'La oferta quedará bloqueada para edición y publicación. El motivo se muestra a la empresa.',
+      etiqueta: 'Motivo del rechazo',
+      min: 1,
+      textoConfirmar: 'Rechazar',
+      variante: 'peligro',
+    });
+    if (!motivo) return;
+    accion(() => rechazarOfertaAdmin(oferta.id, motivo), 'Oferta rechazada.');
+  };
+
+  const observar = async () => {
+    const observacion = await pedirTexto({
+      titulo: 'Observar oferta',
+      mensaje: 'Indica qué debe corregir la empresa. La oferta NO se publica y vuelve a revisión cuando la empresa la corrija.',
+      etiqueta: 'Observaciones para la empresa',
+      multilinea: true,
+      placeholder: 'Describe qué debe corregir la empresa...',
+      min: 1,
+      textoConfirmar: 'Observar',
+      variante: 'primario',
+    });
+    if (!observacion) return;
+    accion(() => observarOfertaAdmin(oferta.id, observacion), 'Oferta observada.');
+  };
+
+  const accion = async (fn, mensaje) => {
+    try {
+      await ejecutar(fn);
+      setError(null);
+      alCambio(mensaje);
+    } catch (e) {
+      setError(errorApi(e));
+    }
+  };
+
+  const botonObservar = (
+    <Boton variante="gris" cargando={enviando} onClick={observar}>
+      <MessageSquareWarning size={16} aria-hidden="true" />Observar
+    </Boton>
+  );
+  const botonRechazar = (
+    <Boton variante="peligro" cargando={enviando} onClick={rechazar}>
+      <XCircle size={16} aria-hidden="true" />Rechazar
+    </Boton>
+  );
+
+  const acciones = !puedeRevisar ? null : {
+    pendiente: (
+      <>
+        <Boton variante="exito" cargando={enviando} onClick={aprobar}>
+          <Check size={16} aria-hidden="true" />Aprobar
+        </Boton>
+        {botonObservar}
+        {botonRechazar}
+      </>
+    ),
+    observada: (
+      <>
+        {botonObservar}
+        {botonRechazar}
+      </>
+    ),
+    publicada: (
+      <>
+        {botonObservar}
+        {botonRechazar}
+        <Boton variante="peligro" cargando={enviando} onClick={() => accion(() => cerrarOfertaAdmin(oferta.id), 'Oferta cerrada.')}>
+          <Lock size={16} aria-hidden="true" />Cerrar
+        </Boton>
+      </>
+    ),
+  }[estado] || null;
+
+  return (
+    <Modal
+      abierto={Boolean(oferta)}
+      titulo={o.puesto}
+      subtitulo={`${o.razon_social || 'Empresa'} · RUC ${o.ruc || '—'}`}
+      alCerrar={alCerrar}
+      acciones={acciones}
+      tamano="ancho"
+    >
+      <div className="form-fila" style={{ marginBottom: '0.8rem' }}>
+        <Estado valor={estado} diccionario={ETIQUETA_ESTADO_OFERTA} />
+        {estado === 'vencida' && <span style={{ color: 'var(--amber-tx)', fontSize: '0.82rem' }}>Cierre automático por vencimiento: ya no recibe postulaciones.</span>}
+        {o.fecha_validacion && <span style={{ color: 'var(--text-3)', fontSize: '0.82rem' }}>Revisada el {fechaHora(o.fecha_validacion)}</span>}
+        {o.fecha_observacion && <span style={{ color: 'var(--blue-tx)', fontSize: '0.82rem' }}>Observada el {fechaHora(o.fecha_observacion)}</span>}
+      </div>
+
+      <Mensaje>{error}</Mensaje>
+      {isLoading && !detalle && <p className="vacio">Cargando detalle…</p>}
+
+      <FichaDatos
+        items={[
+          { etiqueta: 'Categoría', valor: o.categoria_nombre },
+          { etiqueta: 'Tipo de empleo', valor: o.tipo_empleo ? ETIQUETA_TIPO_EMPLEO[o.tipo_empleo] : null },
+          { etiqueta: 'Ubicación', valor: o.ubicacion },
+          { etiqueta: 'Vacantes', valor: o.vacantes },
+          { etiqueta: 'Remuneración', valor: o.remuneracion ? `S/ ${o.remuneracion}` : null },
+          { etiqueta: 'Fecha de cierre', valor: o.fecha_cierre ? fechaCalendario(o.fecha_cierre) : null },
+          { etiqueta: 'Formación requerida', valor: o.formacion_requerida },
+          { etiqueta: 'Experiencia requerida', valor: o.experiencia_requerida },
+          { etiqueta: 'Habilidades', valor: o.habilidades?.length ? o.habilidades.join(', ') : null },
+          { etiqueta: 'Postulaciones', valor: o.cantidad_postulaciones },
+          { etiqueta: 'Enviada', valor: fechaHora(o.created_at) },
+        ]}
+      />
+
+      {o.observacion && (
+        <div className="modal-seccion">
+          <h3>Observaciones a corregir</h3>
+          <p className="modal-texto" style={{ color: 'var(--blue-tx)' }}>{o.observacion}</p>
+        </div>
+      )}
+      {o.motivo_rechazo && (
+        <div className="modal-seccion">
+          <h3>Motivo de rechazo</h3>
+          <p className="modal-texto" style={{ color: 'var(--red-tx)' }}>{o.motivo_rechazo}</p>
+        </div>
+      )}
+      {o.descripcion && (
+        <div className="modal-seccion">
+          <h3>Descripción</h3>
+          <ContenidoEnriquecido>{o.descripcion}</ContenidoEnriquecido>
+        </div>
+      )}
+      {o.funciones && (
+        <div className="modal-seccion">
+          <h3>Funciones</h3>
+          <ContenidoEnriquecido>{o.funciones}</ContenidoEnriquecido>
+        </div>
+      )}
+      {o.requisitos && (
+        <div className="modal-seccion">
+          <h3>Requisitos</h3>
+          <ContenidoEnriquecido>{o.requisitos}</ContenidoEnriquecido>
+        </div>
+      )}
+    </Modal>
+  );
+}

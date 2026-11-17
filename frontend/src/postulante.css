@@ -1,0 +1,1017 @@
+/* SPDX-License-Identifier: MIT */
+/* ==========================================================================
+   Módulo postulante — bolsa de empleo (barra superior navy).
+   Solo el shell y las piezas específicas del módulo; tokens y componentes
+   base viven en styles.css (fuente única).
+   ========================================================================== */
+
+.app-postulante {
+  min-height: 100vh;
+  background: var(--fondo);
+  color: var(--text-1);
+  /* Shell vertical: navbar + Workspace (el Workspace llena el alto restante). */
+  display: flex;
+  flex-direction: column;
+  /* Ancho común de la navbar y el Workspace: mismo eje, max-width y centrado.
+     El tope evita que en pantallas muy anchas la barra se estire de más y el
+     contenido quede visualmente pegado al borde izquierdo. */
+  --post-shell-w: min(1360px, calc(100% - 80px));
+}
+.app-postulante a:where(:not(.btn)) { color: inherit; }
+
+/* ---------- Barra superior ---------- */
+/* Una fila: logo · navegación · buscador (flexible) · acciones de usuario.
+   Flexbox porque la forma de las acciones cambia entre visitante y postulante
+   (un grid de columnas fijas provocaba saltos de fila accidentales). */
+.app-postulante .post-header {
+  background: var(--navy);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  /* Superficie flotante contenida: no toca los bordes del viewport, centrada,
+     con extremos redondeados (misma familia que el shell de Admin/Empresa). */
+  width: var(--post-shell-w);
+  margin: 12px auto 0;
+  flex: 0 0 auto;
+  padding: 10px 18px;
+  min-height: 64px;
+  border-radius: var(--radius-2xl);
+  box-shadow: var(--sombra-tarjeta);
+}
+/* Marca: logotipo institucional + identidad textual, como un único bloque.
+   Puede encogerse si el ancho no alcanza; el texto se recorta con elipsis. */
+.app-postulante .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 1 auto;
+  min-width: 0;
+  text-decoration: none;
+}
+.app-postulante .brand-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; overflow: hidden; }
+.app-postulante .brand-text .name {
+  color: #fff;
+  font-weight: 700;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-postulante .brand-text .tag1 {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-postulante .brand-mark {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-ctl);
+  overflow: hidden;
+  flex-shrink: 0;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--ink);
+}
+.app-postulante .brand-mark .logo-municipal { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+.app-postulante .post-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* Nunca se comprime: si falta ancho, lo absorbe el buscador (evita recortar
+     enlaces). En tablet pasa a su propia fila por breakpoint. */
+  flex-shrink: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  /* Grupo de navegación contenido (una sola unidad, no tarjetas sueltas). */
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-lg);
+}
+.app-postulante .post-nav::-webkit-scrollbar { display: none; }
+.app-postulante .post-nav a {
+  color: #C7D6E8;
+  text-decoration: none;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 9px 12px;
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
+}
+.app-postulante .post-nav a:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.app-postulante .post-nav a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.app-postulante .post-nav a.active {
+  background: var(--accion-primario);
+  color: var(--accion-primario-texto);
+}
+.app-postulante .post-nav a i,
+.app-postulante .post-nav a svg { vertical-align: -2px; margin-right: 6px; }
+/* Iconos Lucide (SVG): el tamaño escala con el texto del enlace (1em). */
+.app-postulante .post-nav a svg { width: 1.05em; height: 1.05em; }
+.app-postulante .nav-text-full { display: inline; }
+.app-postulante .nav-text-short { display: none; }
+
+/* Buscador integrado en la navbar: ocupa todo el espacio flexible central.
+   Antes tenía un máximo de 560px; al llegar a ese tope, el hueco sobrante se
+   acumulaba a la derecha y el bloque logo+nav+perfil parecía desplazado a la
+   izquierda. Dejar que crezca mantiene la navegación y el perfil a la derecha. */
+.app-postulante .post-buscador {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
+  height: 42px;
+  padding: 0 14px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-pill);
+}
+.app-postulante .post-buscador > i { color: rgba(255, 255, 255, 0.7); font-size: 17px; flex-shrink: 0; }
+.app-postulante .post-buscador input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #fff;
+  font-size: 14px;
+}
+.app-postulante .post-buscador input::placeholder { color: rgba(255, 255, 255, 0.65); }
+.app-postulante .post-buscador input:focus { outline: none; }
+.app-postulante .post-buscador:focus-within { outline: 2px solid var(--blue); outline-offset: 1px; }
+
+/* Acciones de usuario (visitante o autenticado) al extremo derecho. El buscador
+   (flexible) ocupa el espacio restante, por lo que no se necesita auto-margen. */
+.app-postulante .post-acciones {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.app-postulante .user-menu {
+  position: relative;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.app-postulante .user-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  flex-shrink: 0;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+.app-postulante .user-block:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 3px;
+  border-radius: var(--radius-md);
+}
+.app-postulante .user-chevron { display: inline-flex; align-items: center; color: #C7D6E8; }
+.app-postulante .user-info { display: block; text-align: right; user-select: none; min-width: 0; }
+.app-postulante .user-info .who {
+  display: block;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  max-width: 160px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-postulante .user-info .role { display: block; color: rgba(255, 255, 255, 0.65); font-size: 11.5px; line-height: 1.2; }
+.app-postulante .avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--accion-primario);
+  color: var(--accion-primario-texto);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+/* ---------- Dropdown de usuario ---------- */
+/* El menú de usuario reutiliza .dropdown-panel; su contenido se estiliza
+   globalmente en Dropdown.css porque el portal vive fuera del shell. */
+
+/* ---------- Layout ---------- */
+/* Workspace: superficie principal del portal del postulante (misma familia
+   que el Workspace de Admin/Empresa). Agrupa el contenido; las tarjetas
+   internas conservan su identidad. */
+.app-postulante .post-main {
+  width: var(--post-shell-w);
+  max-width: none;
+  /* Altura según el contenido (no llena el viewport): la superficie envuelve
+     el contenido. El scroll pertenece a la página. */
+  flex: 0 0 auto;
+  margin: 14px auto 12px;
+  padding: 24px 26px 30px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2xl);
+}
+
+/* ---------- Scroll funcional con barra visualmente oculta ----------
+   Se oculta solo la representación del scrollbar; overflow-y permanece. */
+.app-postulante .lista-ofertas,
+.app-postulante .panel-contenido,
+.app-postulante .panel-detalle {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.app-postulante .lista-ofertas::-webkit-scrollbar,
+.app-postulante .panel-contenido::-webkit-scrollbar,
+.app-postulante .panel-detalle::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* ---------- Pills de filtro ---------- */
+.app-postulante .filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
+  margin-bottom: 20px;
+}
+.app-postulante .pill { position: relative; flex-shrink: 0; min-width: 0; max-width: 100%; }
+.app-postulante .pill.open { z-index: 60; }
+.app-postulante .pill-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  padding: 11px 16px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-1);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.app-postulante .pill-btn .pill-label { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+.app-postulante .pill-btn .label-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.app-postulante .filtro-chevron { flex-shrink: 0; margin-left: auto; }
+.app-postulante .pill-btn .pill-label .clear-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  color: var(--text-3);
+  cursor: pointer;
+  padding: 0 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  transition: color 0.15s;
+  line-height: 1;
+}
+.app-postulante .pill-btn .pill-label .clear-btn:hover { color: var(--red-tx); }
+.app-postulante .pill.active .pill-btn .pill-label .clear-btn { display: inline-flex; }
+.app-postulante .pill-btn i { font-size: 16px; color: var(--text-2); transition: transform 0.18s, color 0.15s; }
+.app-postulante .pill-btn:hover { border-color: var(--blue); }
+.app-postulante .pill-btn:focus-visible {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+.app-postulante .pill-btn:active { transform: translateY(1px); }
+.app-postulante .pill.open .pill-btn { border-color: var(--blue); background: var(--sky); color: var(--enlace); }
+.app-postulante .pill.open .pill-btn i { transform: rotate(180deg); color: var(--enlace); }
+.app-postulante .pill.active .pill-btn { border-color: var(--blue); background: var(--navy); color: #fff; }
+.app-postulante .pill.active .pill-btn i { color: #fff; }
+.app-postulante .pill.active .pill-btn .pill-label .clear-btn { color: rgba(255, 255, 255, 0.6); }
+.app-postulante .pill.active .pill-btn .pill-label .clear-btn:hover { color: #fff; }
+
+
+/* ---------- Resultados ---------- */
+.app-postulante .results-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  padding: 10px 14px;
+  border-radius: var(--radius-lg);
+  background: var(--white);
+}
+.app-postulante .results-head .count { font-size: 15px; font-weight: 600; color: var(--ink); }
+.app-postulante .results-head .count span { color: var(--blue); }
+.app-postulante .results-head .sort { font-size: 12.5px; color: var(--text-3); }
+
+/* ---------- Tarjetas de empleo ---------- */
+.app-postulante .job-card {
+  min-width: 0;
+  max-width: 100%;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-bottom: 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.app-postulante .job-card:hover { border-color: var(--blue); box-shadow: var(--sombra-tarjeta); }
+.app-postulante .job-card:focus-visible {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+.app-postulante .job-card .job-fila { display: flex; gap: 18px; align-items: flex-start; min-width: 0; }
+.app-postulante .job-avatar {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 0;
+  border-radius: var(--radius-md);
+}
+.app-postulante .job-avatar:focus-visible { outline: 2px solid var(--enlace); outline-offset: 2px; }
+.app-postulante .job-body { flex: 1; min-width: 0; }
+.app-postulante .job-body h3 { margin: 0 0 3px; font-size: 16.5px; line-height: 1.3; font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+.app-postulante .company { color: var(--text-2); font-size: 13.5px; margin: 0 0 12px; overflow-wrap: anywhere; }
+.app-postulante .tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; min-width: 0; }
+.app-postulante .tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--sky);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 10px;
+  border-radius: var(--radius-pill);
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.app-postulante .tag i { font-size: 14px; flex-shrink: 0; }
+.app-postulante .tag.accent { background: var(--navy); color: #fff; }
+.app-postulante .job-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.app-postulante .salary { font-size: 16px; font-weight: 700; color: var(--enlace); overflow-wrap: anywhere; }
+.app-postulante .salary span { font-size: 12px; font-weight: 500; color: var(--text-3); margin-left: 4px; }
+.app-postulante .btn-detail {
+  background: var(--navy);
+  color: #fff;
+  border: none;
+  padding: 10px 18px;
+  border-radius: var(--radius-md);
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+.app-postulante .btn-detail:hover { background: var(--navy-2); }
+.app-postulante .btn-detail:focus-visible {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+.app-postulante .btn-detail:active { filter: brightness(0.92); }
+
+.app-postulante .job-detalle {
+  margin-top: 14px;
+  border-top: 1px dashed var(--line);
+  padding-top: 14px;
+}
+.app-postulante .job-detalle .campo-detalle { margin: 8px 0; }
+.app-postulante .job-detalle p { margin: 0.4rem 0; font-size: 0.9rem; }
+.app-postulante .job-detalle p b { color: var(--ink); }
+
+/* ---------- Estadísticas (dashboard) ---------- */
+.app-postulante .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 22px; }
+
+/* Perfil: información + currículum en dos columnas (1 en pantallas menores) */
+.app-postulante .perfil-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: 1.2rem;
+  align-items: start;
+}
+@media (max-width: 1024px) {
+  .app-postulante .perfil-grid { grid-template-columns: 1fr; }
+}
+
+/* Actividad laboral integrada como sección del perfil (no un contenedor aparte):
+   misma tipografía y ancho que el resto de "Mi perfil y CV". */
+.app-postulante .perfil-actividad {
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid var(--line);
+}
+.app-postulante .perfil-actividad > h2 {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.app-postulante .perfil-actividad-sub {
+  margin: 0 0 16px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+
+/* ---------- Foto de perfil e identidad (usa .profile-image compartido) ---------- */
+.app-postulante .perfil-identidad { display: flex; gap: 18px; align-items: flex-start; }
+/* Ancho estable: la columna de foto no debe cambiar con el contenido (el avatar
+   mide 112px y las acciones se apilan dentro de ese ancho, sin ensanchar la
+   columna ni desplazar los datos al aparecer/desaparecer "Quitar"). */
+.app-postulante .perfil-foto { width: 112px; display: flex; flex-direction: column; gap: 10px; align-items: center; flex-shrink: 0; }
+.app-postulante .perfil-foto-acciones { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.app-postulante .perfil-foto-acciones .btn { width: 100%; justify-content: center; }
+.app-postulante .fila-clicable { cursor: pointer; border-radius: var(--radius-md); transition: background 0.15s; }
+.app-postulante .fila-clicable:hover { background: var(--sky); }
+.app-postulante .fila-clicable:focus-visible { outline: 2px solid var(--enlace); outline-offset: 2px; }
+@media (max-width: 560px) {
+  .app-postulante .perfil-identidad { flex-direction: column; align-items: center; }
+  .app-postulante .perfil-foto { width: 100%; }
+}
+
+/* ---------- Filas / listas ---------- */
+.app-postulante .fila { display: flex; align-items: center; gap: 14px; padding: 14px 4px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.app-postulante .fila:last-of-type { border-bottom: none; }
+.app-postulante .fila-main { flex: 1; min-width: 0; }
+.app-postulante .fila-titulo { font-size: 14px; font-weight: 600; color: var(--ink); }
+.app-postulante .fila-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+.app-postulante .fila-derecha { text-align: right; flex-shrink: 0; }
+.app-postulante .fila-derecha .fecha { font-size: 12px; color: var(--text-3); margin-bottom: 6px; }
+.app-postulante .estado-fila { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 4px; border-bottom: 1px solid var(--line); font-size: 0.92rem; }
+.app-postulante .estado-fila:last-of-type { border-bottom: none; }
+
+/* ---------- Filtro plegable (bolsa pública) ---------- */
+.app-postulante .filtro-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 42px;
+  padding: 0 14px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.app-postulante .filtro-pill-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.app-postulante .filtro-chevron {
+  font-size: 18px;
+  color: var(--text-2);
+  transition: transform 0.2s ease;
+}
+.app-postulante .filtro-chevron.rotate,
+.app-postulante .filtro-chevron.abierto {
+  transform: rotate(180deg);
+}
+.app-postulante .filtro-pill:hover .filtro-chevron {
+  color: var(--text-1);
+}
+
+/* Texto de detalle de la oferta (multilínea) */
+.app-postulante .texto-con-formato {
+  white-space: pre-wrap;
+  line-height: 1.4;
+  color: var(--text-1);
+}
+
+/* ---------- Cabecero público de la bolsa de empleo (sin sesión) ---------- */
+.app-postulante .cabecero-publico {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.app-postulante .guest-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.app-postulante .guest-saludo {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-postulante .guest-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: var(--radius-md);
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+.app-postulante .guest-link:hover {
+  background: var(--accion-primario);
+  border-color: var(--accion-primario);
+  color: var(--accion-primario-texto);
+}
+.app-postulante .guest-link.solid {
+  background: var(--accion-primario);
+  border-color: var(--accion-primario);
+  color: var(--accion-primario-texto);
+}
+.app-postulante .guest-link.solid:hover {
+  background: var(--accion-primario-hover);
+  border-color: var(--accion-primario-hover);
+  color: var(--accion-primario-texto);
+}
+.app-postulante .guest-link:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+/* Avatar del postulante en la navbar (misma imagen del perfil, recorte circular). */
+.app-postulante .user-block .user-avatar { border-radius: 50%; }
+
+/* ---------- Aviso de perfil incompleto para poder postular ---------- */
+.app-postulante .perfil-incompleto {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--amber-bg);
+  border: 1px solid #f5d78e;
+  border-radius: var(--radius-xl);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: 13.5px;
+  flex-wrap: wrap;
+}
+.app-postulante .perfil-incompleto > i {
+  font-size: 24px;
+  color: var(--amber-tx);
+}
+.app-postulante .perfil-incompleto div { flex: 1; min-width: 200px; }
+.app-postulante .perfil-incompleto div span { display: block; color: var(--amber-tx); margin-top: 2px; }
+.app-postulante .perfil-incompleto > a {
+  background: var(--amber-tx);
+  color: #fff;
+  text-decoration: none;
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.app-postulante .perfil-incompleto > a:hover { background: #6f4c0e; }
+
+/* ---------- Resumen de completitud del perfil (para poder postular) ---------- */
+.app-postulante .completitud {
+  border: 1px solid #f5d78e;
+  background: var(--amber-bg);
+  border-radius: var(--radius-xl);
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.app-postulante .completitud-titulo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--amber-tx);
+  font-size: 14px;
+}
+.app-postulante .completitud-titulo i { font-size: 20px; }
+.app-postulante .completitud ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 18px;
+}
+.app-postulante .completitud li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: var(--white);
+}
+.app-postulante .completitud li.ok { color: var(--green-tx); }
+.app-postulante .completitud li.ok i { color: var(--green-tx); }
+.app-postulante .completitud li.falta { color: var(--amber-tx); }
+.app-postulante .completitud li.falta i { color: var(--amber-tx); }
+
+/* ========== Responsive ========== */
+/* Portátiles estrechos: se conserva "Empleo MDJLO" y se oculta el subtítulo
+   secundario para dar ancho usable al buscador (adaptación del bloque de
+   identidad, sin crear otra fila). */
+@media (max-width: 1366px) {
+  .app-postulante .brand-text .tag1 { display: none; }
+}
+/* Tablet: la navegación pasa a su propia fila; logo+identidad + buscador +
+   acciones permanecen arriba (el buscador se reduce pero no desaparece). */
+@media (max-width: 1200px) {
+  .app-postulante .post-header { flex-wrap: wrap; row-gap: 10px; }
+  .app-postulante .post-nav { order: 3; flex: 1 1 100%; }
+  .app-postulante .post-buscador { flex: 1 1 180px; max-width: none; }
+}
+@media (max-width: 1024px) {
+  .app-postulante .post-header { padding: 14px 20px; }
+}
+@media (max-width: 860px) {
+  .app-postulante { --post-shell-w: calc(100% - 32px); }
+  .app-postulante .post-header { width: var(--post-shell-w); margin-top: 10px; padding: 12px 14px; }
+  .app-postulante .post-main { width: var(--post-shell-w); margin-top: 12px; padding: 16px 14px 26px; }
+  .app-postulante .stat-row { grid-template-columns: 1fr; }
+}
+@media (max-width: 768px) {
+  .app-postulante .nav-text-full { display: none; }
+  .app-postulante .nav-text-short { display: inline; }
+  .app-postulante .post-nav a { font-size: 12.5px; padding: 8px 10px; }
+  .app-postulante .post-nav a i,
+  .app-postulante .post-nav a svg { margin-right: 4px; }
+}
+@media (max-width: 560px) {
+  .app-postulante .post-main { padding: 14px 12px 22px; }
+  .app-postulante .page-head h1 { font-size: 20px; }
+  .app-postulante .user-info { display: none; }
+  .app-postulante .job-card .job-fila { flex-direction: column; }
+  .app-postulante .job-card { padding: 16px; }
+  .app-postulante .job-body h3 { font-size: 15.5px; }
+  .app-postulante .job-foot { flex-direction: column; align-items: stretch; gap: 10px; }
+  .app-postulante .btn-detail { width: 100%; justify-content: center; }
+  .app-postulante .results-head { flex-direction: column; align-items: flex-start; gap: 8px; }
+}
+@media (max-width: 400px) {
+  .app-postulante .post-nav a {
+    font-size: 11px;
+    padding: 6px 8px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app-postulante .post-nav a i { font-size: 13px; margin-right: 3px; }
+  .app-postulante .post-nav a svg { margin-right: 3px; }
+  .app-postulante .nav-text-short { overflow: hidden; text-overflow: ellipsis; }
+  .app-postulante .pill-btn { font-size: 12px; padding: 9px 12px; }
+  .app-postulante .pill-btn i { font-size: 14px; }
+}
+
+/* Móvil: el buscador ocupa su propia fila a ancho completo; el logo y las
+   acciones quedan arriba y la navegación debajo. Sin scroll horizontal. */
+@media (max-width: 640px) {
+  .app-postulante .post-header {
+    column-gap: 10px;
+    justify-content: space-between;
+  }
+  /* La marca ocupa el espacio restante y se recorta si hace falta; las
+     acciones conservan su ancho. Así no hay desbordamiento a 320/375 px. */
+  .app-postulante .post-header > .brand { order: 1; flex: 1 1 0; min-width: 0; }
+  .app-postulante .post-header .brand-text { min-width: 0; }
+  .app-postulante .post-header .brand-text .name { max-width: 100%; }
+  /* La zona de acciones comparte la fila del logo y se alinea al extremo
+     derecho; el buscador y la navegación conservan sus propias filas. */
+  .app-postulante .post-header:not(.publica) .post-acciones {
+    order: 2;
+    flex: 0 1 auto;
+    min-width: 0;
+    justify-content: flex-end;
+  }
+  .app-postulante .post-header:not(.publica) .user-block { gap: 8px; }
+  .app-postulante .post-buscador { order: 3; flex: 1 1 100%; max-width: none; height: 44px; }
+  .app-postulante .post-nav { order: 4; flex: 1 1 100%; }
+  .app-postulante .post-nav a { flex: 1 1 0; justify-content: center; text-align: center; min-width: 0; }
+  .app-postulante .post-acciones .guest-actions { flex-shrink: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+}
+
+/* Encabezado público sin sesión: identidad + tema, empresa, acceso/registro,
+   buscador y navegación. Solo aplica a .publica; Admin/Empresa y el header
+   autenticado conservan su composición. */
+@media (max-width: 640px) {
+  .app-postulante .post-header.publica {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "marca acceso tema"
+      "buscador buscador buscador"
+      "nav nav nav";
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 10px;
+  }
+  .app-postulante .post-header.publica > .brand { grid-area: marca; min-width: 0; gap: 8px; }
+  .app-postulante .post-header.publica .brand-text { min-width: 0; overflow: hidden; }
+  .app-postulante .post-header.publica .brand-text .name {
+    font-size: 14px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .app-postulante .post-header.publica > .post-acciones { display: contents; }
+  .app-postulante .post-header.publica .cabecero-publico.publicas { display: contents; }
+  .app-postulante .post-header.publica .cabecero-publico.publicas > .btn-tema {
+    grid-area: tema;
+    justify-self: end;
+    align-self: center;
+  }
+  /* En móvil la acción de acceso va junto al tema; empresa y registro se
+     ocultan solo aquí, sin tocar las rutas ni el resto del portal. */
+  .app-postulante .post-header.publica .guest-actions.publicas { display: contents; }
+  .app-postulante .post-header.publica .guest-actions.publicas .guest-empresa,
+  .app-postulante .post-header.publica .guest-actions.publicas .guest-registro {
+    display: none;
+  }
+  .app-postulante .post-header.publica .guest-actions.publicas .guest-login {
+    grid-area: acceso;
+    justify-self: end;
+    align-self: center;
+    padding: 9px 12px;
+    font-size: 12.5px;
+    justify-content: center;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .app-postulante .post-header.publica > .post-buscador {
+    grid-area: buscador;
+    width: 100%;
+    max-width: none;
+    height: 44px;
+  }
+  .app-postulante .post-header.publica > .post-nav {
+    grid-area: nav;
+    width: 100%;
+  }
+}
+
+/* ========== Filtros adaptativos: de fila flexible a cuadrícula ========== */
+@media (max-width: 1100px) {
+  .app-postulante .filter-bar {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 10px;
+  }
+  .app-postulante .filter-bar .pill { width: 100%; min-width: 0; }
+  .app-postulante .filter-bar .pill-btn { width: 100%; min-width: 0; }
+  .app-postulante .filter-bar .pill-label { min-width: 0; }
+  .app-postulante .filter-bar .label-text { overflow: hidden; text-overflow: ellipsis; }
+  .app-postulante .filter-bar .filtro-chevron { margin-left: auto; }
+}
+@media (max-width: 700px) {
+  .app-postulante .filter-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ========== Mobile: postulaciones como tarjetas y filtros en 2 columnas ====== */
+@media (max-width: 640px) {
+  /* Filtros de búsqueda: rejilla equilibrada de 2 columnas */
+  .app-postulante .filter-bar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .app-postulante .filter-bar .pill { min-width: 0; }
+  .app-postulante .filter-bar .pill-btn { width: 100%; min-width: 0; }
+  .app-postulante .filter-bar .pill-label { min-width: 0; }
+  .app-postulante .filter-bar .label-text { overflow: hidden; text-overflow: ellipsis; }
+  .app-postulante .filter-bar .filtro-chevron { margin-left: auto; }
+
+  /* Cada postulación es una tarjeta Rounded en vertical */
+  .app-postulante .fila {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    margin-bottom: 10px;
+  }
+  .app-postulante .fila:last-of-type { border-bottom: 1px solid var(--line); }
+  .app-postulante .fila-derecha {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    text-align: left;
+  }
+  .app-postulante .fila-derecha .fecha { margin-bottom: 0; }
+  .app-postulante .fila-accion { display: flex; }
+}
+
+/* ========== Vista maestro-detalle de búsqueda (lista + panel) ========== */
+.app-postulante .busqueda { display: flex; align-items: flex-start; gap: 18px; }
+.app-postulante .lista-ofertas { flex: 1; min-width: 0; }
+.app-postulante .job-card { cursor: pointer; }
+.app-postulante .job-card.seleccionada {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 3px rgba(27, 111, 201, 0.12);
+}
+
+
+.app-postulante .panel-detalle {
+  width: 400px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 20px;
+  align-self: flex-start;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--sombra-tarjeta);
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+}
+.app-postulante .panel-caja { padding: 20px; }
+.app-postulante .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.app-postulante .panel-head h3 { margin: 0; font-size: 17px; font-weight: 600; color: var(--ink); }
+.app-postulante .panel-head .panel-sub {
+  margin: 3px 0 0;
+  color: var(--text-2);
+  font-size: 13px;
+  max-height: 80px;
+  overflow: hidden;
+  transition: max-height 0.2s ease, opacity 0.15s ease, margin 0.2s ease;
+}
+.app-postulante .panel-head .panel-sub.oculto {
+  max-height: 0;
+  opacity: 0;
+  margin-top: 0;
+}
+/* Encabezado compactable del detalle: tags + salario se colapsan al hacer
+   scroll (UX). La fila se anima con grid-rows sin medir alturas (responsive). */
+.app-postulante .panel-colapsable {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 0.25s ease, opacity 0.2s ease;
+}
+.app-postulante .panel-colapsable.oculto {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.app-postulante .panel-colapsable-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+.app-postulante .panel-close {
+  background: var(--gray-bg);
+  border: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-2);
+  flex-shrink: 0;
+  font-size: 16px;
+}
+.app-postulante .panel-close:hover { background: var(--line); color: var(--text-1); }
+.app-postulante .panel-close:focus-visible {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+.app-postulante .panel-close:active { filter: brightness(0.94); }
+/* Panel de detalle sin selección: deja que el componente `Empty` (styles.css)
+   ocupe y centre el espacio interior. */
+.app-postulante .panel-caja-vacia { height: 100%; display: flex; flex-direction: column; }
+.app-postulante .panel-cabeza { flex-shrink: 0; }
+.app-postulante .panel-contenido { min-height: 0; }
+.app-postulante .panel-detalle .job-detalle { margin-top: 14px; }
+.app-postulante .panel-detalle .job-detalle p { margin: 0.5rem 0; font-size: 1rem; }
+.app-postulante .btn-postular { width: 100%; justify-content: center; margin-top: 14px; }
+
+@media (max-width: 860px) {
+  .app-postulante .busqueda { display: block; }
+  .app-postulante .panel-detalle {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: none;
+    display: none;
+    align-items: flex-end;
+    justify-content: center;
+    background: rgba(11, 37, 66, 0.45);
+    border-radius: 0;
+    border: none;
+    z-index: 200;
+    overflow: hidden;
+  }
+  .app-postulante .panel-detalle.abierto { display: flex; }
+  .app-postulante .panel-detalle .panel-caja {
+    width: 100%;
+    max-width: 560px;
+    background: var(--white);
+    border-radius: var(--radius-2xl) var(--radius-2xl) 0 0;
+    max-height: 88vh;
+    overflow: hidden;
+    padding: 20px 18px 24px;
+    display: flex;
+    flex-direction: column;
+  }
+  .app-postulante .panel-detalle .panel-caja .panel-contenido {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin-top: 8px;
+  }
+  .app-postulante .panel-detalle.abierto .panel-caja {
+    animation: subirPanel 0.22s ease-out;
+  }
+}
+
+@keyframes subirPanel {
+  from { transform: translateY(24px); opacity: 0.6; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* ========== Pantallas grandes: scroll interno por columna y detalle amplio ========== */
+@media (min-width: 861px) {
+  .app-postulante .busqueda {
+    align-items: stretch;
+    height: calc(100vh - 300px);
+    min-height: 570px;
+  }
+  .app-postulante .lista-ofertas {
+    flex: 0 0 42%;
+    max-width: 520px;
+    overflow-y: auto;
+    padding-right: 6px;
+  }
+  .app-postulante .panel-detalle {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+    max-height: none;
+    position: static;
+    top: auto;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .app-postulante .panel-caja {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+  .app-postulante .panel-contenido {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    margin-top: 8px;
+    padding-right: 4px;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-postulante .guest-saludo,
+  .app-postulante .guest-link span,
+  .app-postulante .guest-link i { display: none; }
+  .app-postulante .guest-actions { gap: 6px; }
+}
+
+/* "Mi perfil laboral": datos distribuidos de forma adaptable (grilla) */
+.app-postulante .perfil-datos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1024px) {
+  .app-postulante .perfil-datos { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .app-postulante .perfil-datos { grid-template-columns: 1fr; }
+}
+
+/* En teléfonos se conserva la rejilla de 2 columnas (3 filas). Las etiquetas
+   largas usan elipsis visual con `title`/nombre accesible completo. */

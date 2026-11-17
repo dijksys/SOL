@@ -1,0 +1,632 @@
+// SPDX-License-Identifier: MIT
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { STALE } from '../../queryConfig';
+import { Briefcase } from 'lucide-react';
+import { detalleOferta, listarOfertas, perfilPostulante, postular } from '../../services/postulante';
+import { listarCategorias } from '../../services/categorias';
+import { useAuth } from '../../context/AuthContext';
+import { Mensaje } from '../../components/UI';
+import { useToast } from '../../components/Feedbacks';
+import ContenidoEnriquecido from '../../components/ContenidoEnriquecido';
+import ProfileImage from '../../components/ProfileImage';
+import DropdownPanel from '../../components/Dropdown/DropdownPanel';
+import EmpresaModal from '../../components/EmpresaModal';
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from '../../components/Empty';
+import { ETIQUETA_TIPO_EMPLEO, OPCIONES_EXPERIENCIA_REQUERIDA, OPCIONES_FORMACION_REQUERIDA, ROLES, TIPOS_EMPLEO } from '../../constants';
+import { UBICACIONES_OFERTA } from '../../data/ubicaciones';
+import { errorApi, fechaCalendario, urlArchivo } from '../../utils';
+import { useAccion } from '../../hooks/useAccion';
+
+const OPCIONES_FORMACION = OPCIONES_FORMACION_REQUERIDA;
+const OPCIONES_EXPERIENCIA = OPCIONES_EXPERIENCIA_REQUERIDA;
+const OPCIONES_ORDEN = [
+  { valor: 'recientes', etiqueta: 'Más recientes' },
+  { valor: 'salario', etiqueta: 'Mejor salario' },
+  { valor: 'vacantes', etiqueta: 'Más vacantes' },
+];
+
+const comoOpciones = (lista) => lista.map((v) => ({ valor: v, etiqueta: v }));
+const OPCIONES_TIPO_EMPLEO = TIPOS_EMPLEO.map((t) => ({ valor: t, etiqueta: ETIQUETA_TIPO_EMPLEO[t] || t }));
+
+function moneda(valor) {
+  if (valor == null) return null;
+  return `S/ ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2 }).format(Number(valor))}`;
+}
+
+export default function BuscarEmpleo() {
+  const [sel, setSel] = useState({}); // pillId -> { valor, etiqueta }
+  const [abierto, setAbierto] = useState(null); // pillId abierto
+  const [seleccionadaId, setSeleccionadaId] = useState(null);
+  const [sinAuto, setSinAuto] = useState(false);
+  const [empresaInfo, setEmpresaInfo] = useState(null);
+  // Palabra clave: vive en la URL (?q=) y la comparte el buscador de la navbar.
+  const [searchParams] = useSearchParams();
+  const q = (searchParams.get('q') || '').trim();
+  const { usuario } = useAuth();
+  const { data: categorias } = useQuery({ queryKey: ['categorias'], queryFn: listarCategorias, staleTime: STALE.catalogo });
+  const { data: perfil } = useQuery({
+    queryKey: ['perfil-postulante'],
+    queryFn: perfilPostulante,
+    staleTime: STALE.perfil,
+    enabled: usuario?.rol === ROLES.POSTULANTE,
+  });
+  const completitud = perfil?.completitud;
+  const perfilIncompleto = Boolean(completitud && !completitud.completo);
+  const [esMovil, setEsMovil] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 860px)').matches,
+  );
+  const splitRef = useRef(null);
+  const [altoSplit, setAltoSplit] = useState(0);
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 860px)');
+    const manejar = (e) => setEsMovil(e.matches);
+    mq.addEventListener('change', manejar);
+    return () => mq.removeEventListener('change', manejar);
+  }, []);
+
+  // Ajusta la altura de la vista dividida para que cada columna haga scroll interno.
+  const medirSplit = useCallback(() => {
+    const el = splitRef.current;
+    if (!el) return;
+    const alto = Math.max(420, Math.round(window.innerHeight - el.getBoundingClientRect().top - 56));
+    setAltoSplit(alto);
+  }, []);
+
+  useEffect(() => {
+    medirSplit();
+    window.addEventListener('resize', medirSplit);
+    return () => window.removeEventListener('resize', medirSplit);
+  }, [medirSplit]);
+
+  useEffect(() => {
+    if (!esMovil) medirSplit();
+  }, [esMovil, medirSplit]);
+
+  const queryFiltros = useMemo(() => {
+    const f = {};
+    if (q) f.q = q;
+    if (sel.categoria?.valor) f.categoria_id = sel.categoria.valor;
+    if (sel.ubicacion?.valor) f.ubicacion = sel.ubicacion.valor;
+    if (sel.formacion?.valor) f.formacion = sel.formacion.valor;
+    if (sel.experiencia?.valor) f.experiencia = sel.experiencia.valor;
+    if (sel.tipo_empleo?.valor) f.tipo_empleo = sel.tipo_empleo.valor;
+    return f;
+  }, [sel, q]);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['buscar-ofertas', queryFiltros],
+    queryFn: () => listarOfertas(queryFiltros),
+  });
+
+  const lista = useMemo(() => {
+    const arr = [...(data || [])];
+    if (sel.ordenar?.valor === 'salario') {
+      arr.sort((a, b) => (Number(b.remuneracion) || 0) - (Number(a.remuneracion) || 0));
+    } else if (sel.ordenar?.valor === 'vacantes') {
+      arr.sort((a, b) => (b.vacantes || 0) - (a.vacantes || 0));
+    }
+    return arr;
+  }, [data, sel]);
+
+  const ofertaActual = lista.find((o) => o.id === seleccionadaId) || null;
+
+  useEffect(() => {
+    if (lista.length > 0) medirSplit();
+  }, [lista, medirSplit]);
+
+  // En escritorio, preselecciona la primera oferta al cargar/refrescar resultados.
+  useEffect(() => {
+    if (!esMovil && !sinAuto && lista.length > 0 && !lista.some((o) => o.id === seleccionadaId)) {
+      setSeleccionadaId(lista[0].id);
+    }
+  }, [lista, esMovil, sinAuto, seleccionadaId]);
+
+  // Bloquea el scroll del fondo cuando el modal está abierto en móvil.
+  useEffect(() => {
+    if (!(esMovil && seleccionadaId)) return undefined;
+    const previo = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previo; };
+  }, [esMovil, seleccionadaId]);
+
+  const seleccionar = (id) => {
+    setSeleccionadaId(id);
+    setSinAuto(false);
+  };
+
+  const cerrar = () => {
+    setSeleccionadaId(null);
+    setSinAuto(true);
+  };
+
+  const opcionesCategoria = useMemo(() => {
+    const base = [{ valor: '', etiqueta: 'Todas las categorías' }];
+    const cats = (categorias || []).map((c) => ({ valor: String(c.id), etiqueta: c.nombre }));
+    return base.concat(cats);
+  }, [categorias]);
+
+  const elegir = (id) => (valor, etiqueta) => {
+    setSel((prev) => {
+      const siguiente = { ...prev };
+      if (!valor) delete siguiente[id];
+      else siguiente[id] = { valor, etiqueta };
+      return siguiente;
+    });
+    setAbierto(null);
+  };
+
+  const toggler = (id) => () => setAbierto((prev) => (prev === id ? null : id));
+
+  return (
+    <div>
+      {perfilIncompleto && completitud && (
+        <div className="perfil-incompleto">
+          <i className="ti ti-id-badge" />
+          <div>
+            <strong>Completa tus datos personales y carga tu CV para postularte.</strong>
+            <span>
+              {completitud.faltantes?.length ? `Falta: ${completitud.faltantes.join(', ')}. ` : ''}
+              Formación, experiencia, habilidades y cursos puedes añadirlos después.
+            </span>
+          </div>
+          <Link to="/postulante/perfil">Completar mi perfil</Link>
+        </div>
+      )}
+
+      <div className="filter-bar">
+        <FiltroPill
+          icono="ti ti-arrows-sort"
+          titulo="Ordenar"
+          opciones={OPCIONES_ORDEN}
+          valor={sel.ordenar?.valor}
+          abierto={abierto === 'ordenar'}
+          onToggle={toggler('ordenar')}
+          onCerrar={() => setAbierto(null)}
+          onElegir={elegir('ordenar')}
+          
+        />
+       
+        <FiltroPill
+          icono="ti ti-category"
+          titulo="Categoría"
+          opciones={opcionesCategoria}
+          valor={sel.categoria?.valor || ''}
+          abierto={abierto === 'categoria'}
+          onToggle={toggler('categoria')}
+          onCerrar={() => setAbierto(null)}
+          onElegir={elegir('categoria')}
+        />
+        <FiltroPill
+          icono="ti ti-map-pin"
+          titulo="Ubicación"
+          opciones={comoOpciones(UBICACIONES_OFERTA)}
+          valor={sel.ubicacion?.valor}
+          abierto={abierto === 'ubicacion'}
+          onToggle={toggler('ubicacion')}
+          onCerrar={() => setAbierto(null)}
+          onElegir={elegir('ubicacion')}
+        />
+        <FiltroPill
+          icono="ti ti-school"
+          titulo="Formación"
+          opciones={comoOpciones(OPCIONES_FORMACION)}
+          valor={sel.formacion?.valor}
+          abierto={abierto === 'formacion'}
+          onToggle={toggler('formacion')}
+          onCerrar={() => setAbierto(null)}
+          onElegir={elegir('formacion')}
+        />
+        <FiltroPill
+          icono="ti ti-clock-hour-4"
+          titulo="Experiencia"
+          opciones={comoOpciones(OPCIONES_EXPERIENCIA)}
+          valor={sel.experiencia?.valor}
+          abierto={abierto === 'experiencia'}
+          onToggle={toggler('experiencia')}
+          onCerrar={() => setAbierto(null)}
+          onElegir={elegir('experiencia')}
+        />
+        <FiltroPill
+          icono="ti ti-briefcase"
+          titulo="Tipo de empleo"
+          opciones={OPCIONES_TIPO_EMPLEO}
+          valor={sel.tipo_empleo?.valor}
+          abierto={abierto === 'tipo_empleo'}
+          onToggle={toggler('tipo_empleo')}
+          onCerrar={() => setAbierto(null)}
+          onElegir={elegir('tipo_empleo')}
+        />
+      </div>
+
+      <Mensaje>{error ? errorApi(error) : null}</Mensaje>
+      {isLoading && !data && <p className="vacio">Buscando ofertas…</p>}
+
+      {lista.length === 0 && !isLoading && (
+        <div className="list-card">
+          <p className="empty-note">No hay ofertas publicadas que coincidan con tu búsqueda. Ajusta los filtros para ver más resultados.</p>
+        </div>
+      )}
+
+      {lista.length > 0 && (
+        <section ref={splitRef} className="busqueda" style={!esMovil && altoSplit ? { height: altoSplit } : undefined}>
+          <div className="lista-ofertas">
+            <div className="results-head">
+              <div className="count"><span>{lista.length}</span> Ofertas Disponibles</div>
+              {sel.ordenar?.etiqueta && <div className="sort">Ordenado: {sel.ordenar.etiqueta}</div>}
+            </div>
+
+            {lista.map((o) => (
+              <JobCard
+                key={o.id}
+                oferta={o}
+                seleccionada={o.id === seleccionadaId}
+                onSeleccionar={() => seleccionar(o.id)}
+                onEmpresa={setEmpresaInfo}
+              />
+            ))}
+          </div>
+
+          <PanelDetalle oferta={ofertaActual} onCerrar={cerrar} perfilIncompleto={perfilIncompleto} />
+        </section>
+      )}
+
+      <EmpresaModal empresa={empresaInfo} onCerrar={() => setEmpresaInfo(null)} />
+    </div>
+  );
+}
+
+function FiltroPill({ icono, titulo, opciones, valor, abierto, onToggle, onCerrar, onElegir }) {
+  const ref = useRef(null);
+  const panelRef = useRef(null);
+  const [activo, setActivo] = useState(-1);
+  const listId = `filtro-${titulo.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const opcionActiva = opciones.find((o) => String(o.valor) === String(valor));
+  const indiceSeleccionado = opciones.findIndex((o) => String(o.valor) === String(valor));
+  const etiquetaMostrada = valor && opcionActiva ? opcionActiva.etiqueta : titulo;
+
+  useEffect(() => {
+    if (!abierto) {
+      setActivo(-1);
+      return;
+    }
+    setActivo(indiceSeleccionado >= 0 ? indiceSeleccionado : 0);
+  }, [abierto, indiceSeleccionado]);
+
+  useEffect(() => {
+    if (!abierto || activo < 0) return;
+    document.getElementById(`${listId}-option-${activo}`)?.scrollIntoView({ block: 'nearest' });
+  }, [abierto, activo, listId]);
+
+  const seleccionar = (opcion) => {
+    onElegir(opcion.valor, opcion.etiqueta);
+    onCerrar();
+    ref.current?.focus();
+  };
+
+  const alTeclear = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!abierto) {
+        onToggle();
+        return;
+      }
+      setActivo((previo) => {
+        const paso = e.key === 'ArrowDown' ? 1 : -1;
+        return (previo + paso + opciones.length) % opciones.length;
+      });
+      return;
+    }
+    if (e.key === 'Home' || e.key === 'End') {
+      if (!abierto) return;
+      e.preventDefault();
+      setActivo(e.key === 'Home' ? 0 : opciones.length - 1);
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      if (!abierto) {
+        onToggle();
+      } else if (opciones[activo]) {
+        seleccionar(opciones[activo]);
+      }
+      return;
+    }
+    if (e.key === 'Escape' && abierto) {
+      e.preventDefault();
+      e.stopPropagation();
+      onCerrar();
+      ref.current?.focus();
+    }
+  };
+
+  return (
+    <div ref={ref} className={`pill${abierto ? ' open' : ''}${valor ? ' active' : ''}`}>
+      <button
+        type="button"
+        className="pill-btn"
+        onClick={onToggle}
+        onKeyDown={alTeclear}
+        aria-haspopup="listbox"
+        aria-controls={listId}
+        aria-expanded={abierto}
+        aria-activedescendant={abierto && activo >= 0 ? `${listId}-option-${activo}` : undefined}
+        aria-label={titulo}
+        title={etiquetaMostrada}
+      >
+        <i className={icono} />
+        <span className="pill-label">
+          <span className="label-text">{etiquetaMostrada}</span>
+          {valor ? (
+            <span
+              className="clear-btn"
+              title="Limpiar filtro"
+              onClick={(e) => {
+                e.stopPropagation();
+                onElegir('', titulo);
+              }}
+            >
+              ✕
+            </span>
+          ) : null}
+        </span>
+
+        <i className={`ti ti-chevron-down filtro-chevron${abierto ? ' rotate' : ''}`} />
+      </button>
+
+      <DropdownPanel
+        abierto={abierto}
+        triggerRef={ref}
+        panelRef={panelRef}
+        onCerrar={onCerrar}
+        role="listbox"
+        id={listId}
+        etiqueta={titulo}
+        width="content"
+        minWidth={220}
+        maxHeight={320}
+      >
+        {opciones.map((o, indice) => (
+          <div
+            key={String(o.valor) || 'todo'}
+            id={`${listId}-option-${indice}`}
+            role="option"
+            aria-selected={String(o.valor) === String(valor)}
+            aria-disabled={o.disabled || undefined}
+            className="dropdown-panel__option"
+            data-active={indice === activo ? 'true' : undefined}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => seleccionar(o)}
+          >
+            <span>{o.etiqueta}</span>
+            {String(o.valor) === String(valor) ? <i className="ti ti-check dropdown-panel__check" aria-hidden="true" /> : null}
+          </div>
+        ))}
+      </DropdownPanel>
+    </div>
+  );
+}
+
+function JobCard({ oferta, seleccionada, onSeleccionar, onEmpresa }) {
+  const empresa = oferta.empresa || { razon_social: oferta.razon_social, ruc: oferta.ruc, logo_url: null };
+
+  return (
+    <div className={`job-card${seleccionada ? ' seleccionada' : ''}`} onClick={onSeleccionar} role="button" tabIndex={0}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSeleccionar(); } }}>
+      <div className="job-fila">
+        <button
+          type="button"
+          className="job-avatar"
+          title="Ver información de la empresa"
+          aria-label={`Ver información de ${empresa.razon_social || 'la empresa'}`}
+          onClick={(e) => { e.stopPropagation(); onEmpresa(empresa); }}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') e.stopPropagation(); }}
+        >
+          <ProfileImage
+            src={urlArchivo(empresa.logo_url)}
+            alt={`Foto de ${empresa.razon_social || 'la empresa'}`}
+            nombre={empresa.razon_social}
+            variant="company"
+            size={44}
+          />
+        </button>
+        <div className="job-body">
+          <h3>{oferta.puesto}</h3>
+          <p className="company">{oferta.razon_social || 'Empresa no indicada'}</p>
+          <div className="tags">
+            {oferta.categoria_nombre && <span className="tag accent"><i className="ti ti-category" />{oferta.categoria_nombre}</span>}
+            {ETIQUETA_TIPO_EMPLEO[oferta.tipo_empleo] && <span className="tag"><i className="ti ti-clock" />{ETIQUETA_TIPO_EMPLEO[oferta.tipo_empleo]}</span>}
+            {oferta.ubicacion && <span className="tag"><i className="ti ti-map-pin" />{oferta.ubicacion}</span>}
+            <span className="tag"><i className="ti ti-users" />{oferta.vacantes} vacante(s)</span>
+          </div>
+          <div className="job-foot">
+            <div className="salary">
+              {moneda(oferta.remuneracion) || 'Remuneración a convenir'}
+              {oferta.remuneracion ? <span>/ mes</span> : null}
+            </div>
+            <i className="ti ti-chevron-right" style={{ color: 'var(--text-3)', fontSize: 18 }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PanelDetalle({ oferta, onCerrar, perfilIncompleto }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    ref.current?.scrollTo(0, 0);
+  }, [oferta?.id]);
+
+  return (
+    <aside ref={ref} className={`panel-detalle${oferta ? ' abierto' : ''}`}>
+      {oferta ? <DetalleOferta key={oferta.id} oferta={oferta} onCerrar={onCerrar} perfilIncompleto={perfilIncompleto} /> : (
+        <div className="panel-caja panel-caja-vacia">
+          <div className="panel-head">
+            <h3>Detalle de la oferta</h3>
+          </div>
+          {/* Estado vacío (sin oferta seleccionada). Componente `Empty` adaptado
+              del patrón de shadcn/ui; ver frontend/README.md. */}
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon" aria-hidden="true">
+                <Briefcase size={26} />
+              </EmptyMedia>
+              <EmptyTitle>Encuentra tu próxima oportunidad</EmptyTitle>
+              <EmptyDescription>
+                Selecciona una oferta de la lista para conocer sus funciones, requisitos, ubicación y condiciones laborales.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>Selecciona una oferta para comenzar</EmptyContent>
+          </Empty>
+        </div>
+      )}
+    </aside>
+  );
+}
+
+function DetalleOferta({ oferta, onCerrar, perfilIncompleto }) {
+  const toast = useToast();
+  const [headerOculto, setHeaderOculto] = useState(false);
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { usuario } = useAuth();
+  const { ejecutar, enviando, error, setError } = useAccion(() => postular(oferta.id));
+  const { data: detalle } = useQuery({
+    queryKey: ['oferta-detalle', oferta.id],
+    queryFn: () => detalleOferta(oferta.id),
+  });
+
+  // UX: al desplazar el detalle se compacta el encabezado (razón social, tags y
+  // salario) y reaparece al volver al tope. El título y las acciones persisten.
+  const manejarScrollContenido = (e) => {
+    const scrollTop = e.currentTarget.scrollTop;
+    setHeaderOculto(scrollTop > 10);
+  };
+
+  const postularse = async () => {
+    // Sin sesión no se puede postular: se invita a iniciar sesión o registrarse.
+    if (!usuario) {
+      navigate('/login', { state: { from: '/postulante/buscar' } });
+      return;
+    }
+    if (usuario.rol !== ROLES.POSTULANTE) {
+      setError('Para postularte necesitas una cuenta de postulante. Regístrate o inicia sesión con una cuenta de postulante.');
+      return;
+    }
+    if (perfilIncompleto) {
+      navigate('/postulante/perfil');
+      return;
+    }
+    try {
+      await ejecutar();
+      toast.success('Postulación registrada. La empresa la revisará próximamente.');
+      setError(null);
+      queryClient.invalidateQueries({ queryKey: ['buscar-ofertas'] });
+      queryClient.invalidateQueries({ queryKey: ['oferta-detalle', oferta.id] });
+      // La actividad laboral vive dentro de /postulante/perfil desde la migración.
+      queryClient.invalidateQueries({ queryKey: ['perfil-postulante'] });
+    } catch {
+      // El backend pudo rechazar por vencimiento o por una selección que el
+      // navegador aún no conocía: refresca el detalle para reflejar el estado
+      // efectivo sin confiar en la copia local.
+      queryClient.invalidateQueries({ queryKey: ['oferta-detalle', oferta.id] });
+      queryClient.invalidateQueries({ queryKey: ['buscar-ofertas'] });
+    }
+  };
+
+  const yaPostulo = detalle?.ya_postule === true;
+  const seleccionadoEmpresa = detalle?.ya_seleccionado_empresa === true;
+  const puedePostular = Boolean(detalle) && !enviando && !yaPostulo && !seleccionadoEmpresa && !perfilIncompleto;
+
+  return (
+    <div className="panel-caja">
+      <div className="panel-cabeza">
+        <div className="panel-head">
+          <div style={{ minWidth: 0 }}>
+            <h3>{detalle?.puesto || oferta.puesto}</h3>
+            <p className={`panel-sub${headerOculto ? ' oculto' : ''}`}>{oferta.razon_social || 'Empresa no indicada'}</p>
+          </div>
+          <button type="button" className="panel-close" onClick={onCerrar} aria-label="Cerrar detalle">
+            <i className="ti ti-x" />
+          </button>
+        </div>
+
+        <div className={`panel-colapsable${headerOculto ? ' oculto' : ''}`}>
+          <div className="panel-colapsable-inner">
+            <div className="tags" style={{ marginTop: 12 }}>
+              {oferta.categoria_nombre && <span className="tag accent"><i className="ti ti-category" />{oferta.categoria_nombre}</span>}
+              {ETIQUETA_TIPO_EMPLEO[oferta.tipo_empleo] && <span className="tag"><i className="ti ti-clock" />{ETIQUETA_TIPO_EMPLEO[oferta.tipo_empleo]}</span>}
+              {oferta.ubicacion && <span className="tag"><i className="ti ti-map-pin" />{oferta.ubicacion}</span>}
+              <span className="tag"><i className="ti ti-users" />{oferta.vacantes} vacante(s)</span>
+            </div>
+
+            <div className="salary" style={{ marginTop: 10 }}>
+              {moneda(oferta.remuneracion) || 'Remuneración a convenir'}
+              {oferta.remuneracion ? <span>/ mes</span> : null}
+            </div>
+          </div>
+        </div>
+
+        <Mensaje>{error}</Mensaje>
+
+        <button
+          type="button"
+          className="btn-detail btn-postular"
+          disabled={!puedePostular}
+          style={{ opacity: !puedePostular ? 0.6 : 1, cursor: (yaPostulo || seleccionadoEmpresa || perfilIncompleto) ? 'default' : 'pointer' }}
+          onClick={postularse}
+        >
+          {enviando ? 'Procesando…' : !detalle ? 'Cargando…' : seleccionadoEmpresa ? 'Ya fuiste seleccionado por esta empresa' : yaPostulo ? 'Ya te postulaste a esta oferta' : perfilIncompleto ? 'Completa tus datos y CV para postular' : 'Postular ahora'}
+          {puedePostular ? <i className="ti ti-send" /> : null}
+        </button>
+        {seleccionadoEmpresa && (
+          <p style={{ fontSize: '0.85rem', color: 'var(--amber-tx)', margin: '10px 0 0' }}>
+            La empresa ya te seleccionó en otra oferta. No puedes postularte a otra oferta de la misma empresa.
+          </p>
+        )}
+        {!usuario && (
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-2)', margin: '10px 0 0' }}>
+            Para postularte debes <b>iniciar sesión</b>. Si aún no tienes cuenta, <b>regístrate como postulante</b>.
+          </p>
+        )}
+      </div>
+
+      <div className="panel-contenido" onScroll={manejarScrollContenido}>
+        {!detalle && <p className="vacio" style={{ margin: 0 }}>Cargando detalle…</p>}
+
+        {detalle && (
+          <div className="job-detalle">
+            <div className="descripcion">
+              <div><b>Cierre de postulaciones</b>{detalle.fecha_cierre ? fechaCalendario(detalle.fecha_cierre) : 'Sin fecha'}</div>
+              <div><b>Formación requerida</b>{detalle.formacion_requerida || '—'}</div>
+              <div><b>Experiencia requerida</b>{detalle.experiencia_requerida || '—'}</div>
+              <div><b>Habilidades</b>{(detalle.habilidades || []).join(', ') || '—'}</div>
+            </div>
+            {detalle.descripcion && (
+              <div className="bloque-rte">
+                <b>Descripción</b>
+                <ContenidoEnriquecido>{detalle.descripcion}</ContenidoEnriquecido>
+              </div>
+            )}
+            {detalle.funciones && (
+              <div className="bloque-rte">
+                <b>Funciones</b>
+                <ContenidoEnriquecido>{detalle.funciones}</ContenidoEnriquecido>
+              </div>
+            )}
+            {detalle.requisitos && (
+              <div className="bloque-rte">
+                <b>Requisitos</b>
+                <ContenidoEnriquecido>{detalle.requisitos}</ContenidoEnriquecido>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -1,0 +1,562 @@
+/* SPDX-License-Identifier: MIT */
+/* Landing institucional pública. Solo tokens del sistema; no define colores. */
+
+.inicio-page {
+  --inicio-w: min(1280px, calc(100% - 80px));
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding: 12px 0 0;
+  background: var(--fondo);
+  color: var(--text-1);
+  overflow-x: clip;
+}
+
+.inicio-nav,
+.inicio-main,
+.inicio-pasos,
+.inicio-footer {
+  width: var(--inicio-w);
+  margin-inline: auto;
+}
+
+/* ---------- Barra superior ---------- */
+.inicio-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 10px 18px;
+  border-radius: var(--radius-2xl);
+  background: var(--navy);
+  color: #fff;
+  box-shadow: var(--sombra-tarjeta);
+}
+
+.inicio-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.inicio-brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+}
+
+.inicio-brand-mark .logo-municipal {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.inicio-brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+
+.inicio-brand-text strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inicio-brand-text span {
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inicio-brand:focus-visible,
+.inicio-cta:focus-visible,
+.inicio-acceso-enlaces a:focus-visible,
+.inicio-footer-links a:focus-visible {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+
+.inicio-nav .inicio-brand:focus-visible {
+  outline-color: #fff;
+}
+
+.inicio-nav-acciones {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inicio-nav .btn-tema {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+.inicio-nav .btn-tema:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.inicio-nav .btn-tema:focus-visible {
+  outline-color: #fff;
+}
+
+/* ---------- Hero ---------- */
+.inicio-main {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.8fr);
+  align-items: start;
+  gap: clamp(28px, 3.6vw, 52px);
+  margin-top: 16px;
+  padding: clamp(28px, 4vw, 48px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2xl);
+  background: var(--white);
+  box-shadow: var(--sombra-tarjeta);
+}
+
+.inicio-info {
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.inicio-eyebrow {
+  margin: 0 0 16px;
+  color: var(--text-2);
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.inicio-info h1 {
+  max-width: 22ch;
+  margin: 0 0 18px;
+  color: var(--navy);
+  font-family: 'Sora', 'Inter', system-ui, sans-serif;
+  font-size: clamp(2rem, 3.1vw, 3rem);
+  line-height: 1.08;
+  letter-spacing: -0.025em;
+}
+
+[data-theme="dark"] .inicio-info h1 {
+  color: var(--text-1);
+}
+
+.inicio-intro {
+  max-width: 62ch;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14.5px;
+  line-height: 1.65;
+}
+
+.inicio-linea {
+  margin: 22px 0 0;
+  color: var(--text-3);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+/* ---------- Panel de acceso ---------- */
+.inicio-acceso {
+  min-width: 0;
+  padding: clamp(20px, 2.4vw, 28px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--sky);
+}
+
+.inicio-acceso h2 {
+  margin: 0 0 5px;
+  color: var(--text-1);
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.inicio-acceso-sub {
+  margin: 0 0 18px;
+  color: var(--text-2);
+  font-size: 13.5px;
+}
+
+.inicio-cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 16px;
+  border-radius: var(--radius-pill);
+  background: var(--accion-primario);
+  color: var(--accion-primario-texto);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+
+.inicio-cta:hover {
+  background: var(--accion-primario-hover);
+}
+
+.inicio-acceso-grupo {
+  margin-top: 16px;
+}
+
+.inicio-acceso-grupo:first-of-type {
+  margin-top: 0;
+}
+
+.inicio-acceso-grupo h3 {
+  margin: 0 0 4px;
+  color: var(--text-3);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.inicio-acceso-descripcion {
+  margin: 0 0 10px;
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.inicio-acceso-enlaces {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin-top: 10px;
+}
+
+.inicio-acceso-enlaces a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 3px 0;
+  color: var(--enlace);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.inicio-acceso-enlaces a:hover {
+  text-decoration: underline;
+}
+
+.inicio-acceso-enlaces a:focus-visible {
+  outline: 2px solid var(--accion-foco);
+  outline-offset: 2px;
+}
+
+/* Accesos secundarios agrupados (trabajadores y empleadores): superficie
+   propia y controles individuales, sin alterar el resto del panel. */
+.inicio-acceso-enlaces--trabajadores,
+.inicio-acceso-enlaces--empleadores {
+  gap: 8px;
+  margin-top: 12px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: var(--sky-2);
+}
+
+.inicio-acceso-enlaces--trabajadores a,
+.inicio-acceso-enlaces--empleadores a {
+  flex: 1 1 7rem;
+  justify-content: center;
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--white);
+  text-align: center;
+}
+
+.inicio-acceso-enlaces--trabajadores a:hover,
+.inicio-acceso-enlaces--empleadores a:hover {
+  border-color: var(--enlace);
+  text-decoration: none;
+}
+
+.inicio-acceso-enlaces--trabajadores a:active,
+.inicio-acceso-enlaces--empleadores a:active {
+  background: var(--sky-2);
+}
+
+.inicio-acceso-divisor {
+  margin: 16px 0;
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- Cómo funciona ---------- */
+.inicio-pasos {
+  margin-top: 16px;
+  padding: clamp(24px, 3.2vw, 38px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-2xl);
+  background: var(--white);
+  box-shadow: var(--sombra-tarjeta);
+}
+
+.inicio-pasos-head {
+  max-width: 760px;
+  margin-bottom: 22px;
+}
+
+.inicio-pasos-head h2 {
+  margin: 0 0 5px;
+  color: var(--navy);
+  font-family: 'Sora', 'Inter', system-ui, sans-serif;
+  font-size: clamp(1.3rem, 1.9vw, 1.7rem);
+  line-height: 1.2;
+}
+
+[data-theme="dark"] .inicio-pasos-head h2 {
+  color: var(--text-1);
+}
+
+.inicio-pasos-head p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.inicio-pasos-lista {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 1.8vw, 20px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inicio-paso {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: clamp(16px, 2vw, 22px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  background: var(--fondo);
+}
+
+.inicio-paso-numero {
+  color: var(--blue);
+  font-family: 'Sora', 'Inter', system-ui, sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.inicio-paso-texto {
+  min-width: 0;
+}
+
+.inicio-paso-texto h3 {
+  margin: 0 0 5px;
+  color: var(--text-1);
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.inicio-paso-texto p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12.8px;
+  line-height: 1.55;
+}
+
+/* ---------- Pie institucional ---------- */
+.inicio-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 20px;
+  margin-top: 12px;
+  margin-bottom: 26px;
+  padding: 12px 20px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--white);
+  color: var(--text-3);
+  font-size: 12px;
+}
+
+.inicio-footer p {
+  flex: 1 1 240px;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.45;
+}
+
+.inicio-footer-links {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 4px 14px;
+}
+
+.inicio-footer-links a {
+  color: var(--text-2);
+  text-decoration: none;
+}
+
+.inicio-footer-links a:hover {
+  color: var(--enlace);
+  text-decoration: underline;
+}
+
+/* ---------- Adaptación ---------- */
+@media (max-width: 1024px) {
+  .inicio-main {
+    grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
+    gap: 28px;
+  }
+}
+
+@media (max-width: 900px) {
+  .inicio-main {
+    grid-template-columns: 1fr;
+  }
+
+  .inicio-info h1 {
+    max-width: none;
+  }
+
+  .inicio-acceso {
+    order: 2;
+  }
+
+  .inicio-pasos-lista {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) {
+  .inicio-page {
+    --inicio-w: calc(100% - 32px);
+  }
+
+  .inicio-nav {
+    padding: 12px 14px;
+  }
+
+  .inicio-main {
+    padding: 24px 20px;
+  }
+}
+
+@media (max-width: 560px) {
+  .inicio-page {
+    padding-top: 8px;
+  }
+
+  .inicio-nav {
+    gap: 10px;
+    padding: 11px 12px;
+  }
+
+  .inicio-nav-acciones {
+    gap: 6px;
+  }
+
+  .inicio-main {
+    margin-top: 10px;
+    padding: 20px 16px;
+    border-radius: var(--radius-xl);
+  }
+
+  .inicio-pasos {
+    margin-top: 10px;
+    padding: 20px 16px;
+    border-radius: var(--radius-xl);
+  }
+
+  .inicio-pasos-head {
+    margin-bottom: 16px;
+  }
+
+  .inicio-paso {
+    padding: 16px;
+  }
+
+  .inicio-acceso {
+    padding: 18px 15px;
+  }
+
+  .inicio-info h1 {
+    max-width: none;
+    font-size: clamp(1.75rem, 7vw, 2.3rem);
+  }
+
+  .inicio-cta {
+    min-height: 46px;
+  }
+
+  .inicio-footer {
+    display: block;
+    margin-bottom: 20px;
+    padding: 10px;
+    border-radius: var(--radius-lg);
+    font-size: 11.5px;
+  }
+
+  /* En móvil la identificación institucional se oculta y el pie queda solo
+     con la retícula legal, igual que el footer rounded de autenticación. */
+  .inicio-footer p {
+    display: none;
+  }
+
+  .inicio-footer-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px 8px;
+  }
+
+  .inicio-footer-links a {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+    min-height: 38px;
+    padding: 0.2rem 0.25rem;
+    font-size: 12.5px;
+    line-height: 1.3;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 380px) {
+  .inicio-brand-text span {
+    display: none;
+  }
+}

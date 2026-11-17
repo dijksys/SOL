@@ -1,0 +1,325 @@
+// SPDX-License-Identifier: MIT
+import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Camera, Briefcase, Clock3, FileCheck2, Search, Trash2 } from 'lucide-react';
+import {
+  actualizarPerfilPostulante, eliminarFotoPostulante, perfilPostulante, subirFotoPostulante,
+} from '../../services/postulante';
+import ProfileImage from '../../components/ProfileImage';
+import { Boton, Campo, FechaHoraCampo, Mensaje, Selecto, Tarjeta, EstadoCarga } from '../../components/UI';
+import PageHeader from '../../components/PageHeader';
+import CvUploader from '../../components/CvUploader';
+import StatCard from '../../components/StatCard';
+import DashboardGrid from '../../components/dashboard/DashboardGrid';
+import BarChartCard from '../../components/dashboard/BarChartCard';
+import QuickActionsCard from '../../components/dashboard/QuickActionsCard';
+import { useToast } from '../../components/Feedbacks';
+import { useAuth } from '../../context/AuthContext';
+import { useAccion } from '../../hooks/useAccion';
+import { DONA_ESTADO_POSTULACION } from '../../constants';
+import { esTelefonoValido, errorApi, soloDigitos, urlArchivo } from '../../utils';
+import { STALE } from '../../queryConfig';
+
+/**
+ * "Mi perfil y CV" es el centro de gestión del postulante: reúne los datos
+ * personales/laborales, el CV y la actividad (antes en /postulante/dashboard).
+ * Todo proviene de una única petición GET /postulante/perfil (data.actividad).
+ */
+export default function Perfil() {
+  const { data, isLoading, error } = useQuery({ queryKey: ['perfil-postulante'], queryFn: perfilPostulante, staleTime: STALE.perfil });
+
+  return (
+    <div>
+      <PageHeader
+        titulo="Mi perfil y CV"
+        descripcion="Completa tu perfil laboral para que las empresas te conozcan mejor al postular."
+      />
+
+      {error && <Mensaje>{errorApi(error)}</Mensaje>}
+      {data?.completitud && !data.completitud.completo && <ResumenCompletitud c={data.completitud} />}
+
+      {isLoading && !data && <EstadoCarga />}
+
+      {data && (
+        <>
+          <div className="perfil-grid">
+            <div>
+              <Tarjeta titulo="Mi perfil laboral">
+                <div className="perfil-identidad">
+                  <FotoPerfil fotoUrl={data.foto_url} inicial={(data.nombres || 'P').trim().charAt(0).toUpperCase()} />
+                  <div className="descripcion perfil-datos">
+                    <div><b>{data.tipo_documento === 'CE' ? 'Carnet de extranjería' : 'DNI'}</b>{data.numero_documento || data.dni || '—'}</div>
+                    <div><b>Nombres</b>{data.nombres} {data.apellidos}</div>
+                    <div><b>Distrito</b>{data.distrito || '—'}</div>
+                    <div><b>Teléfono</b>{data.telefono || '—'}</div>
+                    <div><b>Correo</b>{data.email || '—'}</div>
+                    <div><b>Ocupación</b>{data.ocupacion || '—'}</div>
+                    <div><b>Experiencia</b>{data.experiencia || '—'}</div>
+                    <div><b>Estudios / formación</b>{data.estudios || '—'}</div>
+                  </div>
+                </div>
+              </Tarjeta>
+
+              <CvUploader />
+            </div>
+
+            <div>
+              <EdicionBasica perfil={data} />
+            </div>
+          </div>
+
+          <ActividadLaboral actividad={data.actividad} />
+        </>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Foto de perfil. El binario se sirve por el proxy público versionado
+ * /api/postulantes/:id/foto (ruta fuera de JWT); el backend la entrega
+ * normalizada a 800x800 (cover, sin deformar). Placeholder con la inicial si
+ * no hay foto. El acceso público se audita en IMG-12 del informe de imágenes.
+ */
+function FotoPerfil({ fotoUrl, inicial }) {
+  const queryClient = useQueryClient();
+  const toast = useToast();
+  const inputRef = useRef(null);
+  const [cargando, setCargando] = useState(false);
+
+  const elegir = async (e) => {
+    const archivo = e.target.files?.[0];
+    if (inputRef.current) inputRef.current.value = '';
+    if (!archivo) return;
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(archivo.type)) {
+      toast.error('Formato no permitido. Usa JPG, PNG o WEBP.');
+      return;
+    }
+    if (archivo.size > 8 * 1024 * 1024) {
+      toast.error('La imagen supera el tamaño máximo permitido.');
+      return;
+    }
+    setCargando(true);
+    try {
+      await subirFotoPostulante(archivo);
+      queryClient.invalidateQueries({ queryKey: ['perfil-postulante'] });
+      toast.success('Foto de perfil actualizada.');
+    } catch (err) {
+      toast.error(errorApi(err));
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  const quitar = async () => {
+    setCargando(true);
+    try {
+      await eliminarFotoPostulante();
+      queryClient.invalidateQueries({ queryKey: ['perfil-postulante'] });
+      toast.success('Foto de perfil eliminada.');
+    } catch (err) {
+      toast.error(errorApi(err));
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  return (
+    <div className="perfil-foto">
+      <ProfileImage
+        src={urlArchivo(fotoUrl)}
+        nombre={inicial}
+        alt="Foto de perfil"
+        variant="person"
+        size={112}
+      />
+      <div className="perfil-foto-acciones">
+        <label className={`btn btn-gris${cargando ? ' deshabilitado' : ''}`}>
+          <Camera size={15} aria-hidden="true" />{fotoUrl ? 'Cambiar' : 'Subir foto'}
+          <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={elegir} disabled={cargando} hidden />
+        </label>
+        {fotoUrl && (
+          <button type="button" className="btn btn-peligro" onClick={quitar} disabled={cargando}>
+            <Trash2 size={15} aria-hidden="true" />Quitar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Edición de datos personales. El documento de una cuenta local es inmutable;
+ * las cuentas Google pueden completar o corregir su DNI/carnet de extranjería.
+ */
+function EdicionBasica({ perfil }) {
+  const queryClient = useQueryClient();
+  const { refrescarUsuario } = useAuth();
+  const { ejecutar, enviando, error, setError, campos } = useAccion(actualizarPerfilPostulante);
+  const [form, setForm] = useState(null);
+
+  useEffect(() => {
+    setForm({
+      nombres: perfil.nombres,
+      apellidos: perfil.apellidos,
+      email: perfil.email || '',
+      telefono: perfil.telefono || '',
+      direccion: perfil.direccion || '',
+      distrito: perfil.distrito || '',
+      fecha_nacimiento: perfil.fecha_nacimiento || '',
+      ocupacion: perfil.ocupacion || '',
+      experiencia: perfil.experiencia || '',
+      estudios: perfil.estudios || '',
+      tipo_documento: perfil.tipo_documento || 'DNI',
+      numero_documento: perfil.numero_documento || perfil.dni || '',
+    });
+  }, [perfil]);
+
+  if (!form) return null;
+
+  // Un DNI de una cuenta local identifica la cuenta desde el registro y no se
+  // edita. Las cuentas Google pueden completar o corregir su documento.
+  const documentoBloqueado = Boolean(perfil.dni) && perfil.proveedor !== 'google';
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const setSelect = (k) => (valor) => setForm({ ...form, [k]: valor });
+
+  const cambiarDocumento = (tipo) => {
+    setForm({
+      ...form,
+      tipo_documento: tipo,
+      numero_documento: soloDigitos(form.numero_documento),
+    });
+  };
+
+  const guardar = async () => {
+    if (!esTelefonoValido(form.telefono)) {
+      setError('El teléfono debe tener 9 u 11 dígitos.');
+      return;
+    }
+    if (form.numero_documento && form.tipo_documento === 'DNI' && !/^\d{8}$/.test(form.numero_documento)) {
+      setError('El DNI debe tener 8 dígitos.');
+      return;
+    }
+    if (form.numero_documento && form.tipo_documento === 'CE' && !/^\d{9,12}$/.test(form.numero_documento)) {
+      setError('El carnet de extranjería debe tener entre 9 y 12 dígitos.');
+      return;
+    }
+    try {
+      await ejecutar(form);
+      queryClient.invalidateQueries({ queryKey: ['perfil-postulante'] });
+      refrescarUsuario().catch(() => {});
+      setError(null);
+    } catch { /* el error se muestra a través de useAccion */ }
+  };
+
+  return (
+    <Tarjeta titulo="Editar datos personales">
+      <Mensaje>{error}</Mensaje>
+      <div className="form-malla">
+        <Campo etiqueta="Nombres" value={form.nombres} onChange={set('nombres')} error={campos.nombres} />
+        <Campo etiqueta="Apellidos" value={form.apellidos} onChange={set('apellidos')} error={campos.apellidos} />
+        <Selecto etiqueta="Tipo de documento" value={form.tipo_documento} onChange={cambiarDocumento} disabled={documentoBloqueado}>
+          <option value="DNI">DNI</option>
+          <option value="CE">Carnet de extranjería</option>
+        </Selecto>
+        <Campo
+          etiqueta="Número de documento"
+          value={form.numero_documento}
+          onChange={(e) => setForm({
+            ...form,
+            numero_documento: soloDigitos(e.target.value),
+          })}
+          inputMode="numeric"
+          maxLength={form.tipo_documento === 'DNI' ? 8 : 12}
+          disabled={documentoBloqueado}
+        />
+        <Campo etiqueta="Teléfono" value={form.telefono} onChange={(e) => setForm({ ...form, telefono: soloDigitos(e.target.value) })} inputMode="numeric" maxLength={11} error={campos.telefono} />
+        <Campo etiqueta="Dirección" value={form.direccion} onChange={set('direccion')} />
+        <Campo etiqueta="Distrito" value={form.distrito} onChange={set('distrito')} />
+        <FechaHoraCampo etiqueta="Fecha de nacimiento" modo="fecha" value={form.fecha_nacimiento} onChange={setSelect('fecha_nacimiento')} error={campos.fecha_nacimiento} />
+        <Campo etiqueta="Ocupación" value={form.ocupacion} onChange={set('ocupacion')} maxLength={150} />
+        <Campo etiqueta="" style={{ display: 'none' }} type="email" value={form.email} onChange={set('email')} />
+      </div>
+      <label className="campo">
+        <span>Experiencia laboral</span>
+        <textarea value={form.experiencia} onChange={set('experiencia')} rows={3} maxLength={5000} />
+      </label>
+      <label className="campo">
+        <span>Estudios / formación</span>
+        <textarea value={form.estudios} onChange={set('estudios')} rows={3} maxLength={5000} />
+      </label>
+      <Boton variante="primario" cargando={enviando} onClick={guardar}>Guardar cambios</Boton>
+    </Tarjeta>
+  );
+}
+
+/**
+ * Actividad laboral del postulante (migrada desde /postulante/dashboard).
+ * Null-safe: funciona sin postulaciones, sin CV y con datos incompletos.
+ */
+function ActividadLaboral({ actividad }) {
+  const postulaciones = actividad?.postulaciones || {};
+  const total = actividad?.total_postulaciones ?? 0;
+  const conCv = Boolean(actividad?.con_cv);
+  const estadoItems = DONA_ESTADO_POSTULACION.map((o) => ({ etiqueta: o.etiqueta, valor: postulaciones[o.estado] || 0, color: o.color }));
+
+  return (
+    <section className="perfil-actividad">
+      <h2>Mi actividad laboral</h2>
+      <p className="perfil-actividad-sub">Resumen de tus postulaciones y del estado de tu perfil.</p>
+
+      <div className="stat-row">
+        <StatCard variante="row" color="blue" icono={<Briefcase size={20} aria-hidden="true" />} valor={total} etiqueta="Postulaciones realizadas" />
+        <StatCard variante="row" color="amber" icono={<Clock3 size={20} aria-hidden="true" />} valor={postulaciones.pendiente || 0} etiqueta="Pendientes por revisar" />
+        <StatCard
+          variante="row"
+          color="green"
+          icono={<FileCheck2 size={20} aria-hidden="true" />}
+          valor={conCv ? 'Sí' : '—'}
+          etiqueta={conCv ? 'CV cargado' : 'Sin CV cargado'}
+        />
+      </div>
+
+      <DashboardGrid equal>
+        <BarChartCard
+          titulo="Estado de mis postulaciones"
+          descripcion="Distribución de tus postulaciones por etapa"
+          items={estadoItems}
+          vacio="No tienes postulaciones todavía. Explora las ofertas publicadas y postúlate."
+        />
+
+        <QuickActionsCard
+          descripcion="Accesos frecuentes para gestionar tu búsqueda de empleo."
+          acciones={[
+            { to: '/postulante/buscar', texto: 'Buscar empleo', icono: <Search size={17} aria-hidden="true" />, variante: 'primario' },
+            { to: '/postulante/postulaciones', texto: 'Mis postulaciones', icono: <FileCheck2 size={17} aria-hidden="true" />, variante: 'gris' },
+          ]}
+        />
+      </DashboardGrid>
+    </section>
+  );
+}
+
+function ResumenCompletitud({ c }) {
+  const items = [
+    { ok: c.datos_basicos, texto: 'Datos personales y de contacto completos' },
+    { ok: c.tiene_cv, texto: 'CV cargado' },
+  ];
+
+  return (
+    <div className="completitud">
+      <div className="completitud-titulo">
+        <i className="ti ti-alert-triangle" />
+        <strong>Para postularte solo necesitas tus datos personales y un CV cargado.</strong>
+      </div>
+      <ul>
+        {items.map((it) => (
+          <li key={it.texto} className={it.ok ? 'ok' : 'falta'}>
+            {it.ok ? <i className="ti ti-circle-check" /> : <i className="ti ti-circle-x" />}
+            {it.texto}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}

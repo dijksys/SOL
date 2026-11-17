@@ -1,0 +1,61 @@
+<?php
+
+// SPDX-License-Identifier: MIT
+
+namespace App\Controllers\Api\Postulante;
+
+use App\Controllers\Api\BaseApiController;
+use App\Exceptions\ApiException;
+use App\Models\PostulanteModel;
+use App\Services\PostulacionService;
+use App\Validation\Validador;
+
+/**
+ * Postulaciones del ciudadano (RF-30..RF-32). La identidad se resuelve desde la
+ * sesión; el postulante solo opera sus propias postulaciones.
+ */
+class PostulacionesController extends BaseApiController
+{
+    private PostulacionService $servicio;
+
+    private int $postulanteId;
+
+    public function __construct()
+    {
+        $postulante = (new PostulanteModel())->porUserId(service('guard')->id());
+        if ($postulante === null) {
+            throw ApiException::noEncontrado('No se encontró el perfil de postulante.');
+        }
+
+        $this->postulanteId = (int) $postulante->id;
+        $this->servicio     = new PostulacionService();
+    }
+
+    public function index()
+    {
+        return $this->ok($this->servicio->listar($this->postulanteId), 'Mis postulaciones.');
+    }
+
+    public function store()
+    {
+        $cuerpo = $this->cuerpo();
+        if (! Validador::esEnteroPositivo($cuerpo['oferta_id'] ?? null)) {
+            throw ApiException::validacion(
+                'Debe indicar una oferta válida a la que postula.',
+                ['Debe indicar una oferta válida a la que postula.'],
+                ['oferta_id' => 'Debe indicar una oferta válida a la que postula.'],
+            );
+        }
+
+        $id = $this->servicio->postular($this->postulanteId, (int) $cuerpo['oferta_id']);
+
+        return $this->creado(['id' => $id], 'Postulación registrada. La empresa la revisará próximamente.');
+    }
+
+    public function retirar($id)
+    {
+        $this->servicio->retirar($this->postulanteId, (int) $id);
+
+        return $this->sinContenido('Postulación retirada.');
+    }
+}
