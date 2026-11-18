@@ -1765,6 +1765,116 @@ try {
       await page.waitForFunction(() => !document.querySelector('.fecha-hora__calendario'));
     });
 
+    await ejecutar('postulante: carga de CV y foto conservan distribución responsive', async () => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await visitar(page, '/postulante/perfil', 'Mi perfil y CV');
+
+      const escritorio = await page.evaluate(() => {
+        const zona = document.querySelector('.cv-zona');
+        const botonCv = zona?.querySelector('.cv-subir');
+        const foto = document.querySelector('.perfil-foto');
+        const botonFoto = document.querySelector('.perfil-foto-btn');
+        if (!zona || !botonCv || !foto || !botonFoto) return null;
+        const cz = zona.getBoundingClientRect();
+        const cb = botonCv.getBoundingClientRect();
+        const fb = foto.getBoundingClientRect();
+        const fbb = botonFoto.getBoundingClientRect();
+        const estiloZona = getComputedStyle(zona);
+        return {
+          zonaInterior: zona.clientWidth - parseFloat(estiloZona.paddingLeft) - parseFloat(estiloZona.paddingRight),
+          cvAncho: cb.width,
+          cvAlto: cb.height,
+          cvJustify: getComputedStyle(botonCv).justifyContent,
+          cvIcono: Boolean(botonCv.querySelector('.ti-upload, .spinner')),
+          fotoAncho: fb.width,
+          fotoBotonAncho: fbb.width,
+          fotoBotonAlto: fbb.height,
+          fotoTexto: botonFoto.textContent.trim(),
+          fotoAria: botonFoto.getAttribute('aria-label'),
+          fotoTitle: botonFoto.getAttribute('title'),
+          fotoIcono: Boolean(botonFoto.querySelector('svg')),
+        };
+      });
+
+      assert.ok(escritorio, 'no se encontraron los controles de CV o foto');
+      assert.ok(
+        escritorio.cvAncho >= escritorio.zonaInterior - 2,
+        'el botón CV no ocupa el ancho interior de la zona',
+      );
+      assert.ok(escritorio.cvAlto >= 48, `el botón CV mide ${escritorio.cvAlto}px de alto`);
+      assert.equal(escritorio.cvJustify, 'center', 'el contenido del botón CV no está centrado');
+      assert.equal(escritorio.cvIcono, true, 'el botón CV perdió su icono o spinner');
+      assert.ok(
+        Math.abs(escritorio.fotoBotonAncho - escritorio.fotoAncho) <= 1,
+        'el botón de foto no conserva el ancho de su columna',
+      );
+      assert.ok(escritorio.fotoBotonAlto >= 44, `el botón de foto mide ${escritorio.fotoBotonAlto}px de alto`);
+      assert.equal(escritorio.fotoTexto, '', 'el botón de foto todavía muestra texto visible');
+      assert.match(escritorio.fotoAria, /(Subir|Cambiar) foto de perfil/);
+      assert.match(escritorio.fotoTitle, /(Subir|Cambiar) foto de perfil/);
+      assert.equal(escritorio.fotoIcono, true, 'el botón de foto no muestra el icono de cámara');
+
+      const [selectorCv] = await Promise.all([
+        page.waitForEvent('filechooser'),
+        page.locator('.cv-subir').click(),
+      ]);
+      assert.ok(selectorCv, 'el botón de CV no abre el selector de archivos');
+      const [selectorFoto] = await Promise.all([
+        page.waitForEvent('filechooser'),
+        page.locator('.perfil-foto-btn').click(),
+      ]);
+      assert.ok(selectorFoto, 'el botón de foto no abre el selector de archivos');
+
+      await page.setViewportSize({ width: 1024, height: 900 });
+      await visitar(page, '/postulante/perfil', 'Mi perfil y CV');
+      const tablet = await page.evaluate(() => {
+        const zona = document.querySelector('.cv-zona');
+        const boton = zona?.querySelector('.cv-subir');
+        if (!zona || !boton) return null;
+        const estilo = getComputedStyle(zona);
+        return {
+          cvAncho: boton.getBoundingClientRect().width,
+          zonaInterior: zona.clientWidth - parseFloat(estilo.paddingLeft) - parseFloat(estilo.paddingRight),
+          docW: document.documentElement.scrollWidth,
+          winW: window.innerWidth,
+        };
+      });
+      assert.ok(tablet, 'no se encontró el botón CV en 1024 px');
+      assert.ok(tablet.cvAncho >= tablet.zonaInterior - 2, 'el botón CV no ocupa el ancho en 1024 px');
+      assert.ok(tablet.cvAncho <= tablet.zonaInterior + 1, 'el botón CV desborda en 1024 px');
+      assert.ok(tablet.docW <= tablet.winW + 1, 'el perfil provoca desbordamiento horizontal en 1024 px');
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await visitar(page, '/postulante/perfil', 'Mi perfil y CV');
+      const movil = await page.evaluate(() => {
+        const zona = document.querySelector('.cv-zona');
+        const botonCv = zona?.querySelector('.cv-subir');
+        const botonFoto = document.querySelector('.perfil-foto-btn');
+        if (!zona || !botonCv || !botonFoto) return null;
+        const cz = zona.getBoundingClientRect();
+        const cb = botonCv.getBoundingClientRect();
+        const estiloZona = getComputedStyle(zona);
+        return {
+          cvAncho: cb.width,
+          cvAlto: cb.height,
+          zonaInterior: zona.clientWidth - parseFloat(estiloZona.paddingLeft) - parseFloat(estiloZona.paddingRight),
+          fotoTexto: botonFoto.textContent.trim(),
+          fotoAncho: botonFoto.getBoundingClientRect().width,
+          docW: document.documentElement.scrollWidth,
+          winW: window.innerWidth,
+        };
+      });
+      assert.ok(movil, 'no se encontraron los controles en móvil');
+      assert.ok(movil.cvAncho >= movil.zonaInterior - 2, 'el botón CV desborda o no ocupa el ancho móvil');
+      assert.ok(movil.cvAncho <= movil.zonaInterior + 1, 'el botón CV supera el ancho interior en móvil');
+      assert.ok(movil.cvAlto >= 48, 'el botón CV móvil no conserva su altura mínima');
+      assert.equal(movil.fotoTexto, '', 'el botón de foto móvil muestra texto');
+      assert.ok(movil.fotoAncho > 0, 'el botón de foto móvil no tiene ancho');
+      assert.ok(movil.docW <= movil.winW + 1, 'el perfil móvil provoca desbordamiento horizontal');
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+    });
+
     await ejecutar('postulante: filtro con panel compartido', async () => {
       const esperaCategorias = page.waitForResponse(
         (respuesta) => respuesta.url().includes('/api/categorias') && respuesta.request().method() === 'GET',

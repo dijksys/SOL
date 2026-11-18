@@ -431,6 +431,10 @@
 .app-postulante .perfil-foto { width: 112px; display: flex; flex-direction: column; gap: 10px; align-items: center; flex-shrink: 0; }
 .app-postulante .perfil-foto-acciones { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .app-postulante .perfil-foto-acciones .btn { width: 100%; justify-content: center; }
+.app-postulante .perfil-foto-acciones .perfil-foto-btn {
+  min-height: 44px;
+  padding: 0;
+}
 .app-postulante .fila-clicable { cursor: pointer; border-radius: var(--radius-md); transition: background 0.15s; }
 .app-postulante .fila-clicable:hover { background: var(--sky); }
 .app-postulante .fila-clicable:focus-visible { outline: 2px solid var(--enlace); outline-offset: 2px; }

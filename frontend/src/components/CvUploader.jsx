@@ -97,7 +97,7 @@ export default function CvUploader() {
       <Mensaje>{error}</Mensaje>
 
       <div className="cv-zona">
-        <label className="btn btn-gris">
+        <label className="btn btn-gris cv-subir">
           {enviando ? (
             <>
               <span className="spinner" aria-hidden="true" /> Subiendo CV…

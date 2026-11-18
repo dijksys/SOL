@@ -134,8 +134,22 @@ function FotoPerfil({ fotoUrl, inicial }) {
         size={112}
       />
       <div className="perfil-foto-acciones">
-        <label className={`btn btn-gris${cargando ? ' deshabilitado' : ''}`}>
-          <Camera size={15} aria-hidden="true" />{fotoUrl ? 'Cambiar' : 'Subir foto'}
+        <label
+          className={`btn btn-gris perfil-foto-btn${cargando ? ' deshabilitado' : ''}`}
+          title={fotoUrl ? 'Cambiar foto de perfil' : 'Subir foto de perfil'}
+          aria-label={fotoUrl ? 'Cambiar foto de perfil' : 'Subir foto de perfil'}
+          aria-disabled={cargando || undefined}
+          aria-busy={cargando || undefined}
+          role="button"
+          tabIndex={cargando ? -1 : 0}
+          onKeyDown={(e) => {
+            if ((e.key === 'Enter' || e.key === ' ') && !cargando) {
+              e.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+        >
+          <Camera size={19} aria-hidden="true" />
           <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" onChange={elegir} disabled={cargando} hidden />
         </label>
         {fotoUrl && (

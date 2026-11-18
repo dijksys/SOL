@@ -1035,6 +1035,12 @@ input::placeholder, textarea::placeholder { color: var(--text-3); opacity: 1; }
   border-radius: var(--radius-xl);
   background: var(--sky);
 }
+.cv-zona > .btn {
+  width: 100%;
+  min-height: 48px;
+  flex: 1 1 100%;
+  justify-content: center;
+}
 .cv-zona input[type='file'] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 .cv-chip {
   display: inline-flex;
