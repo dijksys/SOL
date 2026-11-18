@@ -40,14 +40,24 @@
   overscroll-behavior: contain;
 }
 
+/* Las páginas envuelven su contenido en un div sin estilos. Al anular esa caja,
+   el PageHeader queda directamente en el scroll de .content y su sticky cubre
+   todo el recorrido, como la topbar independiente de Administración. */
+.app-empresa .content > div:has(> .page-head) { display: contents; }
+
 /* Banda de header alineada con la cabecera del Sidebar: misma referencia
    horizontal que el topbar de Admin (82px + borde inferior con --line). */
 .app-empresa .content .page-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
   min-height: var(--shell-header-h);
   align-items: center;
   border-bottom: 1px solid var(--line);
   margin: 0 -35px 26px;
   padding: 0 35px;
+  /* Fondo opaco: el contenido que pasa bajo la cabecera no debe verse. */
+  background: var(--white);
 }
 
 /* Cuando el workspace supera el límite de 1600 px del contenido, el borde
@@ -64,7 +74,7 @@
     height: 1px;
     background: var(--line);
     pointer-events: none;
-    z-index: 1;
+    z-index: 30;
   }
 
   .app-empresa .content .page-head { border-bottom: 0; }
@@ -163,6 +173,9 @@
 
   /* Banda de cabecera: título y descripción centrados, CTA a todo el ancho. */
   .app-empresa .content .page-head {
+    position: relative;
+    top: auto;
+    z-index: auto;
     min-height: var(--shell-header-h);
     flex-direction: column;
     align-items: center;

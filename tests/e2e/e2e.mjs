@@ -293,6 +293,13 @@ async function verificarShell(page, etiqueta) {
 async function verificarSeparadorEmpresa(page, ruta, texto) {
   await page.setViewportSize({ width: 1920, height: 900 });
   await visitar(page, ruta, texto);
+  await page.evaluate(() => {
+    const contenido = document.querySelector('.content');
+    const relleno = document.createElement('div');
+    relleno.id = 'e2e-empresa-scroll';
+    relleno.style.height = '1200px';
+    contenido.append(relleno);
+  });
   await page.mouse.move(1900, 450);
   await page.waitForTimeout(250);
 
@@ -343,6 +350,68 @@ async function verificarSeparadorEmpresa(page, ruta, texto) {
   const contraida = await medir();
   comprobar(contraida, 'sidebar contraída');
 
+  const scroll = await page.evaluate(() => {
+    const content = document.querySelector('.content');
+    const head = document.querySelector('.page-head');
+    const regla = document.querySelector('.empresa-header-rule');
+    content.scrollTop = Math.min(420, content.scrollHeight - content.clientHeight);
+    const cr = content.getBoundingClientRect();
+    const hr = head.getBoundingClientRect();
+    const rr = regla.getBoundingClientRect();
+    const fondo = getComputedStyle(head).backgroundColor;
+    const alpha = fondo.startsWith('rgba') ? Number(fondo.split(',')[3]) : 1;
+    const punto = document.elementFromPoint(cr.left + 20, hr.top + 20);
+    return {
+      scrollTop: content.scrollTop,
+      contentTop: cr.top,
+      headTop: hr.top,
+      headBottom: hr.bottom,
+      reglaTop: rr.top,
+      position: getComputedStyle(head).position,
+      backgroundAlpha: alpha,
+      encabezadoRecibePunto: Boolean(punto?.closest('.page-head')),
+      docW: document.documentElement.scrollWidth,
+      winW: window.innerWidth,
+    };
+  });
+  assert.ok(scroll.scrollTop > 0, `${texto}: el contenido no se desplazó`);
+  assert.equal(scroll.position, 'sticky', `${texto}: la cabecera no es sticky`);
+  assert.ok(Math.abs(scroll.headTop - scroll.contentTop) <= 1, `${texto}: la cabecera no permanece en el borde superior`);
+  assert.ok(Math.abs(scroll.headBottom - scroll.reglaTop) <= 1, `${texto}: el separador se separó de la cabecera al hacer scroll`);
+  assert.ok(scroll.backgroundAlpha >= 0.99, `${texto}: el fondo de la cabecera no es opaco`);
+  assert.equal(scroll.encabezadoRecibePunto, true, `${texto}: el contenido se superpone sobre la cabecera`);
+  assert.ok(scroll.docW <= scroll.winW + 1, `${texto}: desbordamiento horizontal durante el scroll`);
+
+  const scrollFinal = await page.evaluate(() => {
+    const content = document.querySelector('.content');
+    content.scrollTop = content.scrollHeight;
+    const cr = content.getBoundingClientRect();
+    const head = document.querySelector('.page-head').getBoundingClientRect();
+    const regla = document.querySelector('.empresa-header-rule').getBoundingClientRect();
+    return {
+      scrollTop: content.scrollTop,
+      contentTop: cr.top,
+      headTop: head.top,
+      headBottom: head.bottom,
+      reglaTop: regla.top,
+    };
+  });
+  assert.ok(scrollFinal.scrollTop > 0, `${texto}: no se alcanzó el final del contenido`);
+  assert.ok(
+    Math.abs(scrollFinal.headTop - scrollFinal.contentTop) <= 1,
+    `${texto}: cabecera desplazada al final ${JSON.stringify(scrollFinal)}`,
+  );
+  assert.ok(
+    Math.abs(scrollFinal.headBottom - scrollFinal.reglaTop) <= 1,
+    `${texto}: separador desplazado al final ${JSON.stringify(scrollFinal)}`,
+  );
+
+  await page.evaluate(() => {
+    document.getElementById('e2e-empresa-scroll')?.remove();
+    document.querySelector('.content').scrollTop = 0;
+  });
+  await page.waitForTimeout(100);
+
   await page.locator('.sidebar').hover();
   await page.waitForTimeout(90);
   const durante = await medir();
@@ -361,24 +430,75 @@ async function verificarSeparadorEmpresa(page, ruta, texto) {
   await page.waitForTimeout(150);
 }
 
-async function verificarSeparadorEmpresaMovil(page) {
-  await page.setViewportSize({ width: 390, height: 844 });
+async function verificarSeparadorEmpresaEscritorio(page, ancho, alto) {
+  await page.setViewportSize({ width: ancho, height: alto });
   await visitar(page, '/empresa/dashboard', 'Panel de empresa');
   const medida = await page.evaluate(() => {
     const head = document.querySelector('.page-head');
     const regla = document.querySelector('.empresa-header-rule');
+    const fondo = getComputedStyle(head).backgroundColor;
+    return {
+      posicion: getComputedStyle(head).position,
+      fondoAlpha: fondo.startsWith('rgba') ? Number(fondo.split(',')[3]) : 1,
+      regla: getComputedStyle(regla).display,
+      docW: document.documentElement.scrollWidth,
+      winW: window.innerWidth,
+    };
+  });
+  assert.equal(medida.posicion, 'sticky', `empresa ${ancho}: la cabecera no es sticky`);
+  assert.ok(medida.fondoAlpha >= 0.99, `empresa ${ancho}: el fondo de la cabecera no es opaco`);
+  assert.equal(medida.regla, 'none', `empresa ${ancho}: la regla de workspace no debe duplicarse`);
+  assert.ok(medida.docW <= medida.winW + 1, `empresa ${ancho}: desbordamiento horizontal`);
+}
+
+async function verificarSeparadorEmpresaMovil(page) {
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await visitar(page, '/empresa/dashboard', 'Panel de empresa');
+  const tablet = await page.evaluate(() => {
+    const head = document.querySelector('.page-head');
+    const regla = document.querySelector('.empresa-header-rule');
+    return {
+      posicion: getComputedStyle(head).position,
+      regla: getComputedStyle(regla).display,
+      borde: getComputedStyle(head).borderBottomStyle,
+      docW: document.documentElement.scrollWidth,
+      winW: window.innerWidth,
+    };
+  });
+  assert.equal(tablet.posicion, 'relative', 'empresa 768: la cabecera no debe ser sticky');
+  assert.equal(tablet.regla, 'none', 'empresa 768: la regla de workspace no debe mostrarse');
+  assert.equal(tablet.borde, 'solid', 'empresa 768: el encabezado perdió su borde');
+  assert.ok(tablet.docW <= tablet.winW + 1, 'empresa 768: desbordamiento horizontal');
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await visitar(page, '/empresa/dashboard', 'Panel de empresa');
+  const medirMovil = () => page.evaluate(() => {
+    const head = document.querySelector('.page-head');
+    const regla = document.querySelector('.empresa-header-rule');
     return {
       displayRegla: getComputedStyle(regla).display,
+      posicionHead: getComputedStyle(head).position,
       bordeHead: getComputedStyle(head).borderBottomWidth,
       estiloBorde: getComputedStyle(head).borderBottomStyle,
       docW: document.documentElement.scrollWidth,
       winW: window.innerWidth,
     };
   });
+  const medida = await medirMovil();
   assert.equal(medida.displayRegla, 'none', 'empresa móvil: la regla de escritorio no debe mostrarse');
+  assert.equal(medida.posicionHead, 'relative', 'empresa móvil: la cabecera no debe ser sticky');
   assert.equal(medida.estiloBorde, 'solid', 'empresa móvil: el encabezado perdió su borde');
   assert.equal(medida.bordeHead, '1px', 'empresa móvil: el borde del encabezado no mide 1px');
   assert.ok(medida.docW <= medida.winW + 1, 'empresa móvil: desbordamiento horizontal');
+
+  await page.setViewportSize({ width: 360, height: 800 });
+  await visitar(page, '/empresa/dashboard', 'Panel de empresa');
+  const compacto = await medirMovil();
+  assert.equal(compacto.displayRegla, 'none', 'empresa 360: la regla de escritorio no debe mostrarse');
+  assert.equal(compacto.posicionHead, 'relative', 'empresa 360: la cabecera no debe ser sticky');
+  assert.equal(compacto.estiloBorde, 'solid', 'empresa 360: el encabezado perdió su borde');
+  assert.ok(compacto.docW <= compacto.winW + 1, 'empresa 360: desbordamiento horizontal');
+
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.waitForTimeout(150);
 }
@@ -1424,8 +1544,20 @@ try {
       bloqueado('empresa: formulario de oferta', 'sesión de empresa no iniciada');
     } else {
       await ejecutar('empresa: separador de cabecera ocupa todo el workspace', async () => {
-        await verificarSeparadorEmpresa(page, '/empresa/dashboard', 'Panel de empresa');
-        await verificarSeparadorEmpresa(page, '/empresa/postulaciones', 'Postulaciones');
+        for (const [ruta, texto] of [
+          ['/empresa/dashboard', 'Panel de empresa'],
+          ['/empresa/perfil', 'Mi empresa'],
+          ['/empresa/ofertas', 'Ofertas laborales'],
+          ['/empresa/postulaciones', 'Postulaciones'],
+          ['/empresa/contrataciones', 'Contrataciones'],
+          ['/cuenta', 'Mi cuenta'],
+          ['/configuracion/temas', 'Temas'],
+          ['/about', 'Acerca de'],
+        ]) {
+          await verificarSeparadorEmpresa(page, ruta, texto);
+        }
+        await verificarSeparadorEmpresaEscritorio(page, 1440, 900);
+        await verificarSeparadorEmpresaEscritorio(page, 1024, 768);
         await verificarSeparadorEmpresaMovil(page);
       });
 
