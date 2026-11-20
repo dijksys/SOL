@@ -53,6 +53,16 @@ export default function MisPostulaciones() {
 
       <Mensaje>{error}</Mensaje>
       {isLoading && <EstadoCarga />}
+      {data && data.length > 0 && (
+        <Mensaje tipo="info">
+          <strong>Seguimiento de tu postulación</strong>
+          <p>
+            El estado de tu postulación puede actualizarse durante el proceso de selección.
+            La empresa puede reconsiderar una candidatura marcada como «No seleccionado» y
+            devolverla a «En revisión».
+          </p>
+        </Mensaje>
+      )}
       {data && data.length === 0 && (
         <div className="list-card">
           <p className="empty-note">Aún no realizas postulaciones. Busca ofertas de empleo y postula en pocos pasos.</p>

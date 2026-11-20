@@ -10,7 +10,7 @@ import PageHeader from '../../components/PageHeader';
 import TarjetaRegistro from '../../components/TarjetaRegistro';
 import Modal from '../../components/Modal';
 import FichaDatos from '../../components/FichaDatos';
-import { Download, UserCheck, UserX } from 'lucide-react';
+import { Download, RotateCcw, UserCheck, UserX } from 'lucide-react';
 import { ETIQUETA_ESTADO_POSTULACION, TRANSICIONES_POSTULACION } from '../../constants';
 import ProfileImage from '../../components/ProfileImage';
 import { listarOfertasEmpresa } from '../../services/ofertas';
@@ -194,6 +194,7 @@ function DetalleCandidato({ postulacion, alCerrar, alCambio }) {
   };
 
   const opciones = activo === 1 ? (TRANSICIONES_POSTULACION[estado] || []) : [];
+  const puedeReconsiderar = !retirada && activo === 1 && estado === 'no_seleccionado';
 
   return (
     <Modal
@@ -280,18 +281,36 @@ function DetalleCandidato({ postulacion, alCerrar, alCambio }) {
 
       {opciones.length > 0 && (
         <div className="modal-seccion">
-          <h3>Avanzar estado</h3>
+          <h3>Gestionar estado de postulación</h3>
+          {puedeReconsiderar && (
+            <Mensaje tipo="info">
+              <strong>Reconsideración de candidato</strong>
+              <p>
+                Esta postulación fue marcada anteriormente como «No seleccionado». Puedes reconsiderar
+                al candidato y devolverla al estado «En revisión». La decisión anterior permanecerá
+                registrada en el historial de cambios.
+              </p>
+            </Mensaje>
+          )}
           <div className="form-fila">
-            {opciones.map((s) => (
-              <Boton
-                key={s}
-                variante={s === 'seleccionado' ? 'exito' : s === 'no_seleccionado' ? 'peligro' : 'primario'}
-                cargando={enviando}
-                onClick={() => guardar(() => cambiarEstadoPostulacion(postulacion.id, s))}
-              >
-                {ETIQUETA_ESTADO_POSTULACION[s]}
-              </Boton>
-            ))}
+            {opciones.map((s) => {
+              const esReconsideracion = estado === 'no_seleccionado' && s === 'en_revision';
+              return (
+                <Boton
+                  key={s}
+                  variante={s === 'seleccionado' ? 'exito' : s === 'no_seleccionado' ? 'peligro' : 'primario'}
+                  cargando={enviando}
+                  onClick={() => guardar(() => cambiarEstadoPostulacion(postulacion.id, s))}
+                >
+                  {esReconsideracion ? (
+                    <>
+                      <RotateCcw size={16} aria-hidden="true" />
+                      Reconsiderar candidato
+                    </>
+                  ) : ETIQUETA_ESTADO_POSTULACION[s]}
+                </Boton>
+              );
+            })}
           </div>
         </div>
       )}

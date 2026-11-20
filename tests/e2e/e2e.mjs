@@ -1543,6 +1543,25 @@ try {
     if (!sesion) {
       bloqueado('empresa: formulario de oferta', 'sesión de empresa no iniciada');
     } else {
+      await ejecutar('empresa: detalle explica la reconsideración de no seleccionados', async () => {
+        await visitar(page, '/empresa/postulaciones', 'Postulaciones');
+        const tarjeta = page.getByRole('button', { name: /Ver detalle:/ }).filter({ hasText: 'No seleccionado' }).first();
+        if (await tarjeta.count() === 0) {
+          resultados.push({
+            estado: 'NOT RUN',
+            nombre: 'empresa: detalle de no seleccionado (requiere un registro de prueba)',
+          });
+          return;
+        }
+        await tarjeta.click();
+        const dialogo = page.getByRole('dialog');
+        await dialogo.getByRole('heading', { name: 'Gestionar estado de postulación' }).waitFor();
+        await dialogo.getByText('Reconsideración de candidato').waitFor();
+        await dialogo.getByText(/La decisión anterior permanecerá registrada en el historial/).waitFor();
+        await dialogo.getByRole('button', { name: 'Reconsiderar candidato' }).waitFor();
+        await page.keyboard.press('Escape');
+      });
+
       await ejecutar('empresa: separador de cabecera ocupa todo el workspace', async () => {
         for (const [ruta, texto] of [
           ['/empresa/dashboard', 'Panel de empresa'],
@@ -1886,6 +1905,21 @@ try {
       });
     }
 
+
+    await ejecutar('postulante: aviso de seguimiento y reconsideración', async () => {
+      await visitar(page, '/postulante/postulaciones', 'Mis postulaciones');
+      const filas = await page.locator('.fila').count();
+      if (filas === 0) {
+        resultados.push({
+          estado: 'NOT RUN',
+          nombre: 'postulante: aviso de seguimiento (requiere postulaciones de prueba)',
+        });
+        return;
+      }
+      await page.getByText('Seguimiento de tu postulación').waitFor();
+      await page.getByText(/La empresa puede reconsiderar una candidatura marcada como «No seleccionado»/).waitFor();
+      await sinDesbordamiento(page, 'postulante postulaciones');
+    });
 
     await ejecutar('postulante: fecha de nacimiento usa el calendario global', async () => {
       await page.goto(`${BASE}/postulante/perfil`, { waitUntil: 'domcontentloaded' });
